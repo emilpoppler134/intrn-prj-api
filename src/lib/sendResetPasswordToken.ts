@@ -1,6 +1,6 @@
 import { createTransport } from 'nodemailer';
 import { google } from 'googleapis';
-import { CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, REDIRECT_URI } from '../config';
+import { CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, REDIRECT_URI } from '../config.js';
 import { EStatus } from './response.js';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 

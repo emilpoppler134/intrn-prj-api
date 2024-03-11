@@ -17,7 +17,7 @@
   },
   "type": "module",
   "scripts": {
-    "watch": "npm run compile && node ./dist/index.js",
+    "watch": "tsc && node ./dist/index.js",
     "dev": "./node_modules/nodemon/bin/nodemon.js -e ts  --exec \"npm run watch\"",
     "build": "rimraf ./build && tsc",
     "start": "node build/index.js"
