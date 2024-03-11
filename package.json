@@ -17,10 +17,10 @@
   },
   "type": "module",
   "scripts": {
-    "watch": "tsc && node ./dist/index.js",
+    "build": "tsc",
+    "watch": "npm run build && node ./dist/index.js",
     "dev": "./node_modules/nodemon/bin/nodemon.js -e ts  --exec \"npm run watch\"",
-    "build": "rimraf ./build && tsc",
-    "start": "node build/index.js"
+    "start": "node ./dist/index.js"
   },
   "keywords": [],
   "author": "",
