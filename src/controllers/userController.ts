@@ -12,7 +12,6 @@ type IEmail = string | undefined;
 type IPassword = string | undefined;
 
 type IFindUserResponse = IUser | null;
-type IInsertUserTokenResponse = IUser | null;
 type ICreateUserResponse = IUser | null;
 
 async function login(req: Request, res: Response) {
