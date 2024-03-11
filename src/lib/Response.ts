@@ -5,7 +5,9 @@ export enum EStatus {
 
 export enum EError {
   INVALID_PARAMS = "INVALID_PARAMS",
+  DATABASE_ERROR = "DATABASE_ERROR",
   HASH_PARSING = "HASH_PARSING",
+  USER_EXISTS = "USER_EXISTS",
   NO_MATCH = "NO_MATCH"
 }
 
