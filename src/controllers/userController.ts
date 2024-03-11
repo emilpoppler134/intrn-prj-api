@@ -1,6 +1,7 @@
 import { User } from '../models/User.js';
 import { ValidResponse, ErrorResponse, EError } from '../lib/Response.js';
 import { hashPassword } from '../lib/hashPassword.js';
+import { createToken } from '../lib/createToken.js';
 
 import type { Request, Response } from 'express';
 import type { IUser } from '../models/User.js';
@@ -11,6 +12,7 @@ type IEmail = string | undefined;
 type IPassword = string | undefined;
 
 type IFindUserResponse = IUser | null;
+type IInsertUserTokenResponse = IUser | null;
 type ICreateUserResponse = IUser | null;
 
 async function login(req: Request, res: Response) {
@@ -40,7 +42,21 @@ async function login(req: Request, res: Response) {
     return;
   }
 
-  res.json(new ValidResponse("This is a token"));
+  const token: string = await createToken();
+
+  const insertUserTokenResponse = await User.updateOne(
+    { _id: findUserResponse._id }, 
+    { $push: { tokens: token } }
+  );
+
+  if (insertUserTokenResponse === null) {
+    res.json(new ErrorResponse(EError.DATABASE_ERROR));
+    return;
+  }
+
+  console.log(insertUserTokenResponse)
+
+  res.json(new ValidResponse({ token }));
 }
 
 async function signup(req: Request, res: Response) {
@@ -69,11 +85,14 @@ async function signup(req: Request, res: Response) {
     return;
   }
 
+  const token: string = await createToken();
+
   const createUserResponse: ICreateUserResponse = await User.create(
     {
       "name": name,
       "email": email,
-      "password_hash": passwordHash
+      "password_hash": passwordHash,
+      "tokens": [ token ]
     }
   );
 
@@ -82,7 +101,7 @@ async function signup(req: Request, res: Response) {
     return;
   }
 
-  res.json(createUserResponse);
+  res.json(new ValidResponse({ token }));
 }
 
 export default { login, signup }

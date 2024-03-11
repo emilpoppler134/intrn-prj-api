@@ -1,9 +1,11 @@
-import { Schema, model } from 'mongoose';
+import { Schema, model, Types } from 'mongoose';
 
 type IUser = {
+  _id: Types.ObjectId;
   name: string;
   email: string;
   password_hash: string;
+  tokens: Array<string>;
 }
 
 const schema = new Schema<IUser>(
@@ -20,7 +22,13 @@ const schema = new Schema<IUser>(
     {
       type: String,
       required: true
-    }
+    },
+    tokens: [
+      {
+        type: String,
+        required: true
+      }
+    ]
   }
 );
 
