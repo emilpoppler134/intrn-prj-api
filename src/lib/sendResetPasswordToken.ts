@@ -1,6 +1,6 @@
 import { createTransport } from 'nodemailer';
 import { google } from 'googleapis';
-import { CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, REDIRECT_URI } from '../config.js';
+import { API_ADDRESS, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, REDIRECT_URI } from '../config.js';
 import { EStatus } from './response.js';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 
@@ -30,7 +30,7 @@ export async function sendResetPasswordToken(email: string, name: string, code: 
         <div style="width: 100%; max-width: 600px; margin: 0 auto; background-color: #fff; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;">
           <div style="box-sizing: border-box; width: 100%; height: 70px; padding: 0 40px;">
             <div style="height: 100%; border-bottom: 1px solid #ebeef1;">
-              <img src="https://www.50archive.com/images/logo.svg" style="height: 100%;">
+              <img src="${API_ADDRESS}/images/logo.svg" style="height: 100%;">
             </div>
           </div>
           <div style="box-sizing: border-box; padding: 0 40px;">

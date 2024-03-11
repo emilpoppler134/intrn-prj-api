@@ -19,4 +19,5 @@ export const REDIRECT_URI = process.env.REDIRECT_URI;
 
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 
+export const API_ADDRESS = process.env.API_ADDRESS;
 export const PORT = parseInt(process.env.PORT || "4000");
