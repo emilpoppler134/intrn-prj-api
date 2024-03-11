@@ -14,11 +14,11 @@ export enum EError {
 
 export class ValidResponse {
   status: EStatus;
-  data: any;
+  data?: any;
   
-  constructor(data: any) {
+  constructor(data?: any) {
     this.status = EStatus.OK;
-    this.data = data;
+    this.data = data ?? null;
   }
 }
 

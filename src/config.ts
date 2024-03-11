@@ -12,10 +12,10 @@ export const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || "";
 export const S3_REGION = process.env.S3_REGION || "";
 export const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY || "";
 
-export const CLIENT_ID = process.env.CLIENT_ID;
-export const CLIENT_SECRET = process.env.CLIENT_SECRET;
-export const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
-export const REDIRECT_URI = process.env.REDIRECT_URI;
+export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+export const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
+export const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
 
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 

@@ -141,9 +141,10 @@ async function forgotPasswordRequest(req: Request, res: Response) {
 
   if (sendResetPasswordTokenResponse === EStatus.ERROR) {
     res.json(new ErrorResponse(EError.MAIL_ERROR));
+    return;
   }
 
-  res.json(new ValidResponse({ code }));
+  res.json(new ValidResponse());
 }
 
 async function forgotPasswordConfirmation(req: Request, res: Response) {

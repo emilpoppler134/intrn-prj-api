@@ -1,22 +1,25 @@
 import { createTransport } from 'nodemailer';
 import { google } from 'googleapis';
-import { API_ADDRESS, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, REDIRECT_URI } from '../config.js';
-import { EStatus } from './response.js';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { API_ADDRESS, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_REDIRECT_URI } from '../config.js';
+import { EStatus } from './response.js';
 
-const oAuth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
-oAuth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+const oAuth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+oAuth2Client.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
 
 export async function sendResetPasswordToken(email: string, name: string, code: number): Promise<EStatus> {
   const accessToken = await oAuth2Client.getAccessToken();
+
   const transport = createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: {
       type: 'OAuth2',
-      user: '50archivese@gmail.com',
-      clientId: CLIENT_ID,
-      clientSecret: CLIENT_SECRET,
-      refreshToken: REFRESH_TOKEN,
+      user: 'emil.poppler@gmail.com',
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+      refreshToken: GOOGLE_REFRESH_TOKEN,
       accessToken: accessToken
     }
   } as SMTPTransport.Options);
