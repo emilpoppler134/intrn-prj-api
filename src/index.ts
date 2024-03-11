@@ -5,13 +5,17 @@ import { connect } from 'mongoose';
 
 import { PORT, DATABASE_USERNAME, DATABASE_PASSWORD, DATABASE_HOST, DATABASE_NAME } from './config.js';
 
+import './models/User.js';
+
 import imageRoutes from './routes/images.js';
+import userRoutes from './routes/users.js';
 
 const server = express();
-server.use(bodyParser.json())
+server.use(bodyParser.json());
 server.use(cors());
 
 server.use("/images", imageRoutes);
+server.use("/users", userRoutes);
 
 server.listen(PORT, async () => {
   console.log(`Listening on http://localhost:${PORT}/`);
