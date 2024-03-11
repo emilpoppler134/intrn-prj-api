@@ -12,6 +12,11 @@ export const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || "";
 export const S3_REGION = process.env.S3_REGION || "";
 export const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY || "";
 
+export const CLIENT_ID = process.env.CLIENT_ID;
+export const CLIENT_SECRET = process.env.CLIENT_SECRET;
+export const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
+export const REDIRECT_URI = process.env.REDIRECT_URI;
+
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 
 export const PORT = parseInt(process.env.PORT || "4000");

@@ -6,6 +6,7 @@ import { connect } from 'mongoose';
 import { PORT, DATABASE_USERNAME, DATABASE_PASSWORD, DATABASE_HOST, DATABASE_NAME } from './config.js';
 
 import './models/User.js';
+import './models/ResetPasswordToken.js';
 
 import imageRoutes from './routes/images.js';
 import userRoutes from './routes/users.js';

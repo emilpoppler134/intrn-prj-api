@@ -1,18 +1,24 @@
 import { User } from '../models/User.js';
-import { ValidResponse, ErrorResponse, EError } from '../lib/Response.js';
+import { ResetPasswordToken } from '../models/ResetPasswordToken.js';
+import { ValidResponse, ErrorResponse, EError, EStatus } from '../lib/response.js';
 import { hashPassword } from '../lib/hashPassword.js';
 import { createToken } from '../lib/createToken.js';
+import { sendResetPasswordToken } from '../lib/sendResetPasswordToken.js';
 
 import type { Request, Response } from 'express';
 import type { IUser } from '../models/User.js';
+import type { IResetPasswordToken } from '../models/ResetPasswordToken.js';
 import type { IPasswordHash } from '../lib/hashPassword.js';
 
 type IName = string | undefined;
 type IEmail = string | undefined;
 type IPassword = string | undefined;
+type ICode = string | undefined;
 
 type IFindUserResponse = IUser | null;
 type ICreateUserResponse = IUser | null;
+
+type ICreateResetPasswordTokenResponse = IResetPasswordToken | null;
 
 async function login(req: Request, res: Response) {
   const { email, password }: { email: IEmail, password: IPassword } = req.body;
@@ -37,7 +43,7 @@ async function login(req: Request, res: Response) {
   );
 
   if (findUserResponse === null) {
-    res.json(new ErrorResponse(EError.NO_MATCH));
+    res.json(new ErrorResponse(EError.NO_RESULT));
     return;
   }
 
@@ -103,4 +109,48 @@ async function signup(req: Request, res: Response) {
   res.json(new ValidResponse({ token }));
 }
 
-export default { login, signup }
+async function forgotPasswordRequest(req: Request, res: Response) {
+  const email: IEmail = req.body.email;
+
+  const findUserResponse: IFindUserResponse = await User.findOne(
+    {
+      "email": email
+    }
+  );
+
+  if (findUserResponse === null) {
+    res.json(new ErrorResponse(EError.NO_RESULT));
+    return;
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000);
+
+  const resetPasswordTokenResponse: ICreateResetPasswordTokenResponse = await ResetPasswordToken.create(
+    {
+      "code": code,
+      "user": findUserResponse._id
+    }
+  );
+
+  if (resetPasswordTokenResponse === null) {
+    res.json(new ErrorResponse(EError.DATABASE_ERROR));
+    return;
+  }
+
+  const sendResetPasswordTokenResponse: EStatus = await sendResetPasswordToken(findUserResponse.email, findUserResponse.name, code);
+
+  if (sendResetPasswordTokenResponse === EStatus.ERROR) {
+    res.json(new ErrorResponse(EError.MAIL_ERROR));
+  }
+
+  res.json(new ValidResponse({ code }));
+}
+
+async function forgotPasswordConfirmation(req: Request, res: Response) {
+  const email: IEmail = req.body.email;
+  const code: ICode = req.body.code;
+  
+  res.json({ email, code });
+}
+
+export default { login, signup, forgotPasswordRequest, forgotPasswordConfirmation }

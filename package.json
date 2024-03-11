@@ -9,16 +9,18 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "googleapis": "^133.0.0",
     "mongoose": "^8.0.4",
+    "nodemailer": "^6.9.12",
     "stripe": "^14.16.0",
     "undici-types": "^5.26.5"
   },
   "type": "module",
   "scripts": {
-    "compile": "tsc",
     "watch": "npm run compile && node ./dist/index.js",
     "dev": "./node_modules/nodemon/bin/nodemon.js -e ts  --exec \"npm run watch\"",
-    "start": "npm run compile && node ./dist/index.js"
+    "build": "rimraf ./build && tsc",
+    "start": "node build/index.js"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/node": "^20.11.2",
+    "@types/nodemailer": "^6.4.14",
     "nodemon": "^3.0.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
