@@ -15,10 +15,10 @@ type IEmail = string | undefined;
 type IPassword = string | undefined;
 type ICode = string | undefined;
 
-type IFindUserResponse = IUser | null;
-type ICreateUserResponse = IUser | null;
+type IFindUser = IUser | null;
+type ICreateUser = IUser | null;
 
-type ICreateResetPasswordTokenResponse = IResetPasswordToken | null;
+type ICreateResetPasswordToken = IResetPasswordToken | null;
 
 async function login(req: Request, res: Response) {
   const { email, password }: { email: IEmail, password: IPassword } = req.body;
@@ -35,31 +35,29 @@ async function login(req: Request, res: Response) {
     return;
   }
 
-  const findUserResponse: IFindUserResponse = await User.findOne(
+  const findUser: IFindUser = await User.findOne(
     {
       "email": email,
       "password_hash": passwordHash
     }
   );
 
-  if (findUserResponse === null) {
+  if (findUser === null) {
     res.json(new ErrorResponse(EError.NO_RESULT));
     return;
   }
 
   const token: string = await createToken();
 
-  const insertUserTokenResponse = await User.updateOne(
-    { _id: findUserResponse._id }, 
+  const updateUserToken = await User.updateOne(
+    { _id: findUser._id }, 
     { $push: { tokens: token } }
   );
 
-  if (insertUserTokenResponse === null) {
+  if (updateUserToken === null) {
     res.json(new ErrorResponse(EError.DATABASE_ERROR));
     return;
   }
-
-  console.log(insertUserTokenResponse)
 
   res.json(new ValidResponse({ token }));
 }
@@ -72,13 +70,13 @@ async function signup(req: Request, res: Response) {
     return;
   }
 
-  const findUserResponse: IFindUserResponse = await User.findOne(
+  const findUser: IFindUser = await User.findOne(
     {
       "email": email
     }
   );
 
-  if (findUserResponse !== null) {
+  if (findUser !== null) {
     res.json(new ErrorResponse(EError.USER_EXISTS));
     return;
   }
@@ -92,7 +90,7 @@ async function signup(req: Request, res: Response) {
 
   const token: string = await createToken();
 
-  const createUserResponse: ICreateUserResponse = await User.create(
+  const createUser: ICreateUser = await User.create(
     {
       "name": name,
       "email": email,
@@ -101,7 +99,7 @@ async function signup(req: Request, res: Response) {
     }
   );
 
-  if (createUserResponse === null) {
+  if (createUser === null) {
     res.json(new ErrorResponse(EError.DATABASE_ERROR));
     return;
   }
@@ -112,34 +110,39 @@ async function signup(req: Request, res: Response) {
 async function forgotPasswordRequest(req: Request, res: Response) {
   const email: IEmail = req.body.email;
 
-  const findUserResponse: IFindUserResponse = await User.findOne(
+  if (email === undefined) {
+    res.json(new ErrorResponse(EError.INVALID_PARAMS));
+    return;
+  }
+
+  const findUser: IFindUser = await User.findOne(
     {
       "email": email
     }
   );
 
-  if (findUserResponse === null) {
+  if (findUser === null) {
     res.json(new ErrorResponse(EError.NO_RESULT));
     return;
   }
 
   const code = Math.floor(100000 + Math.random() * 900000);
 
-  const resetPasswordTokenResponse: ICreateResetPasswordTokenResponse = await ResetPasswordToken.create(
+  const createResetPasswordToken: ICreateResetPasswordToken = await ResetPasswordToken.create(
     {
       "code": code,
-      "user": findUserResponse._id
+      "user": findUser._id
     }
   );
 
-  if (resetPasswordTokenResponse === null) {
+  if (createResetPasswordToken === null) {
     res.json(new ErrorResponse(EError.DATABASE_ERROR));
     return;
   }
 
-  const sendResetPasswordTokenResponse: EStatus = await sendResetPasswordToken(findUserResponse.email, findUserResponse.name, code);
+  const sendResetPasswordTokenStatus: EStatus = await sendResetPasswordToken(findUser.email, findUser.name, code);
 
-  if (sendResetPasswordTokenResponse === EStatus.ERROR) {
+  if (sendResetPasswordTokenStatus === EStatus.ERROR) {
     res.json(new ErrorResponse(EError.MAIL_ERROR));
     return;
   }
@@ -150,8 +153,52 @@ async function forgotPasswordRequest(req: Request, res: Response) {
 async function forgotPasswordConfirmation(req: Request, res: Response) {
   const email: IEmail = req.body.email;
   const code: ICode = req.body.code;
+  const password: IPassword = req.body.password;
+
+  if (email === undefined || code === undefined || password === undefined) {
+    res.json(new ErrorResponse(EError.INVALID_PARAMS));
+    return;
+  }
+
+  const findUser: IFindUser = await User.findOne(
+    {
+      "email": email
+    }
+  );
+
+  if (findUser === null) {
+    res.json(new ErrorResponse(EError.NO_RESULT));
+    return;
+  }
   
-  res.json({ email, code });
+  const updateResetPasswordToken = await ResetPasswordToken.findOneAndUpdate(
+    { "user": findUser._id, "code": code, "consumed": false },
+    { consumed: true }
+  );
+
+  if (updateResetPasswordToken === null) {
+    res.json(new ErrorResponse(EError.DATABASE_ERROR));
+    return;
+  }
+
+  const passwordHash: IPasswordHash = hashPassword(password);
+
+  if (passwordHash === null) {
+    res.json(new ErrorResponse(EError.HASH_PARSING));
+    return;
+  }
+
+  const updateUser = await User.updateOne(
+    { "_id": findUser._id },
+    { "password_hash": passwordHash }
+  );
+
+  if (updateUser === null) {
+    res.json(new ErrorResponse(EError.DATABASE_ERROR));
+    return;
+  }
+
+  res.json(new ValidResponse());
 }
 
 export default { login, signup, forgotPasswordRequest, forgotPasswordConfirmation }
