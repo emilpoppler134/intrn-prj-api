@@ -2,12 +2,11 @@ import { createTransport } from 'nodemailer';
 import { google } from 'googleapis';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { API_ADDRESS, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_REDIRECT_URI } from '../config.js';
-import { EStatus } from './response.js';
 
 const oAuth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
 oAuth2Client.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
 
-export async function sendResetPasswordToken(email: string, name: string, code: number): Promise<EStatus> {
+export async function sendResetPasswordToken(email: string, name: string, code: number) {
   const accessToken = await oAuth2Client.getAccessToken();
 
   const transport = createTransport({
@@ -56,8 +55,7 @@ export async function sendResetPasswordToken(email: string, name: string, code: 
 
   try {
     await transport.sendMail(mailOptions);
-    return EStatus.OK;
   } catch {
-    return EStatus.ERROR
+    throw new Error();
   }
 }

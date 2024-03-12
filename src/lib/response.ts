@@ -1,9 +1,9 @@
-export enum EStatus {
+export enum ResponseStatus {
   OK = "OK",
   ERROR = "ERROR"
 }
 
-export enum EError {
+export enum ErrorType {
   INVALID_PARAMS = "INVALID_PARAMS",
   DATABASE_ERROR = "DATABASE_ERROR",
   HASH_PARSING = "HASH_PARSING",
@@ -13,11 +13,11 @@ export enum EError {
 }
 
 export class ValidResponse {
-  status: EStatus;
+  status: ResponseStatus;
   data?: any;
   
   constructor(data?: any) {
-    this.status = EStatus.OK;
+    this.status = ResponseStatus.OK;
 
     if (data !== undefined) {
       this.data = data;
@@ -26,11 +26,11 @@ export class ValidResponse {
 }
 
 export class ErrorResponse {
-  status: EStatus;
-  error: EError;
+  status: ResponseStatus;
+  error: ErrorType;
   
-  constructor(error: EError) {
-    this.status = EStatus.ERROR;
+  constructor(error: ErrorType) {
+    this.status = ResponseStatus.ERROR;
     this.error = error;
   }
 }

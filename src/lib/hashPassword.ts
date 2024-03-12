@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 
-export type IPasswordHash = string | null;
+export type PasswordHash = string | null;
 
-export function hashPassword(password: string): IPasswordHash {
+export function hashPassword(password: string): PasswordHash {
   try {
     return crypto.createHash("sha256")
       .update(password)
