@@ -18,7 +18,10 @@ export class ValidResponse {
   
   constructor(data?: any) {
     this.status = EStatus.OK;
-    this.data = data ?? null;
+
+    if (data !== undefined) {
+      this.data = data;
+    }
   }
 }
 
