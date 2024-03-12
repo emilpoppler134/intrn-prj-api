@@ -7,6 +7,7 @@ import { hashPassword } from '../lib/hashPassword.js';
 import { sendResetPasswordToken } from '../lib/sendResetPasswordToken.js';
 import { ValidResponse, ErrorResponse, EError, EStatus } from '../lib/response.js';
 
+import type { DeleteResult, UpdateResult } from 'mongodb';
 import type { Request, Response } from 'express';
 import type { IAccessToken } from '../models/AccessToken.js';
 import type { IResetPasswordToken } from '../models/ResetPasswordToken.js';
@@ -209,6 +210,29 @@ async function signup(req: Request, res: Response) {
   res.json(new ValidResponse({ token }));
 }
 
+async function logout(req: Request, res: Response) {
+  const token: IParamValue = req.body.accessToken;
+
+  // Check if all required values are defined
+  if (token === undefined) {
+    res.json(new ErrorResponse(EError.INVALID_PARAMS));
+    return;
+  }
+
+  const deleteAccessToken: DeleteResult = await AccessToken.deleteMany(
+    {
+      token: token
+    }
+  );
+  // If something went wrong, return an error
+  if (deleteAccessToken.acknowledged === false) {
+    res.json(new ErrorResponse(EError.DATABASE_ERROR));
+    return;
+  }
+
+  res.json(new ValidResponse());
+}
+
 async function forgotPasswordRequest(req: Request, res: Response) {
   const email: IParamValue = req.body.email;
 
@@ -297,13 +321,12 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   }
   
   // Update the reset password token to consumed
-  const updateResetPasswordToken: IResetPasswordTokenAction = await ResetPasswordToken.findOneAndUpdate(
+  const updateResetPasswordToken: UpdateResult = await ResetPasswordToken.updateOne(
     { _id: findResetPasswordToken._id },
-    { consumed: true },
-    { new: true }
+    { consumed: true }
   );
   // If something went wrong, return an error
-  if (updateResetPasswordToken === null) {
+  if (updateResetPasswordToken.acknowledged === false) {
     res.json(new ErrorResponse(EError.DATABASE_ERROR));
     return;
   }
@@ -316,14 +339,12 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   }
 
   // Update the user password in the database
-  const updateUser: IUserAction = await User.findOneAndUpdate(
+  const updateUser: UpdateResult = await User.updateOne(
     { _id: findUser._id },
-    { password_hash: passwordHash },
-    { new: true }
+    { password_hash: passwordHash }
   );
-
-   // If something went wrong, return an error
-  if (updateUser === null) {
+  // If something went wrong, return an error
+  if (updateUser.acknowledged === false) {
     res.json(new ErrorResponse(EError.DATABASE_ERROR));
     return;
   }
@@ -332,4 +353,4 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-export default { find, login, signup, forgotPasswordRequest, forgotPasswordConfirmation }
+export default { find, login, signup, logout, forgotPasswordRequest, forgotPasswordConfirmation }
