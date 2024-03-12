@@ -6,6 +6,7 @@ type IResetPasswordToken = {
   code: number;
   consumed: boolean;
   expiry_date: Date;
+  timestamp: Date;
 }
 
 const schema = new Schema<IResetPasswordToken>(
@@ -19,20 +20,27 @@ const schema = new Schema<IResetPasswordToken>(
       type: Number,
       required: true
     },
-    consumed: 
-    {
+    consumed: {
       type: Boolean,
       required: true,
       default: () => false
     },
-    expiry_date: 
-    {
+    expiry_date: {
       type: Date,
       required: true,
       default: () => {
         const date = new Date();
         date.setHours(date.getHours() + 1); // So it expires in UTC +1 (sweden time)
         date.setMinutes(date.getMinutes() + 5); // Expires 5 minutes after creation
+        return date;
+      }
+    },
+    timestamp: {
+      type: Date,
+      required: true,
+      default: () => {
+        const date = new Date();
+        date.setHours(date.getHours() + 1); // So the time is in UTC +1 (sweden time)
         return date;
       }
     }

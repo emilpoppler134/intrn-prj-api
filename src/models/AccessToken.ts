@@ -19,8 +19,7 @@ const schema = new Schema<IAccessToken>(
       type: String,
       required: true
     },
-    expiry_date: 
-    {
+    expiry_date: {
       type: Date,
       required: true,
       default: () => {
@@ -30,8 +29,7 @@ const schema = new Schema<IAccessToken>(
         return date;
       }
     },
-    timestamp: 
-    {
+    timestamp: {
       type: Date,
       required: true,
       default: () => {
