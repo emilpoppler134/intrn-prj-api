@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { AccessToken } from '../models/AccessToken.js';
 import { ResetPasswordToken } from '../models/ResetPasswordToken.js';
 import { User } from '../models/User.js';
@@ -12,11 +13,87 @@ import type { IResetPasswordToken } from '../models/ResetPasswordToken.js';
 import type { IUser } from '../models/User.js';
 import type { IPasswordHash } from '../lib/hashPassword.js';
 
+enum ESearchMode {
+  Id = "Id",
+  Token = "AccessToken"
+}
+
 type IParamValue = string | undefined;
+type ISearchModeParamValue = ESearchMode | undefined;
 
 type IUserAction = IUser | null;
 type IAccessTokenAction = IAccessToken | null;
 type IResetPasswordTokenAction = IResetPasswordToken | null;
+type IAccessTokenUserExtendedAction = (Omit<IAccessToken, 'user'> & { user: IUser | null }) | null;
+
+async function find(req: Request, res: Response) {
+  const mode: ISearchModeParamValue = req.body.mode;
+  const id: IParamValue = req.body.id;
+  const token: IParamValue = req.body.accessToken;
+
+  // Check if required mode value are defined
+  if (mode === undefined) {
+    res.json(new ErrorResponse(EError.INVALID_PARAMS));
+    return;
+  }
+
+  switch (mode) {
+    case ESearchMode.Id: {
+      // Check if required id value are defined
+      if (id === undefined || !Types.ObjectId.isValid(id)) {
+        res.json(new ErrorResponse(EError.INVALID_PARAMS));
+        return;
+      }
+
+      // Look for the user in the database by id
+      const findUser: IUserAction = await User.findOne(
+        {
+          _id: id
+        }
+      )
+
+      // If there is no user with that id, return error
+      if (findUser === null) {
+        res.json(new ErrorResponse(EError.NO_RESULT));
+        return;
+      }
+
+      const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findUser);
+
+      res.json(new ValidResponse(userResponse));
+    } break;
+
+    case ESearchMode.Token: {
+      // Check if required token value are defined
+      if (token === undefined) {
+        res.json(new ErrorResponse(EError.INVALID_PARAMS));
+        return;
+      }
+
+      // Look for the access token in the database and extend the user
+      const findAccessTokenUserExtended: IAccessTokenUserExtendedAction = await AccessToken.findOne(
+        {
+          token: token
+        }
+      )
+      .populate({ path: "user", model: "User" });
+
+      // If there is no access token or user with provided token, return error
+      if (findAccessTokenUserExtended === null || findAccessTokenUserExtended.user === null) {
+        res.json(new ErrorResponse(EError.NO_RESULT));
+        return;
+      }
+
+      const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findAccessTokenUserExtended.user);
+
+      res.json(new ValidResponse(userResponse));
+    } break;
+  
+    default: {
+      res.json(new ErrorResponse(EError.INVALID_PARAMS));
+    } break;
+  }
+}
 
 async function login(req: Request, res: Response) {
   const email: IParamValue = req.body.email;
@@ -255,4 +332,4 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-export default { login, signup, forgotPasswordRequest, forgotPasswordConfirmation }
+export default { find, login, signup, forgotPasswordRequest, forgotPasswordConfirmation }
