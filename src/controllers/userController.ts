@@ -1,13 +1,15 @@
-import { User } from '../models/User.js';
+import { AccessToken } from '../models/AccessToken.js';
 import { ResetPasswordToken } from '../models/ResetPasswordToken.js';
-import { ValidResponse, ErrorResponse, EError, EStatus } from '../lib/response.js';
+import { User } from '../models/User.js';
+import { createAccessToken } from '../lib/createAccessToken.js';
 import { hashPassword } from '../lib/hashPassword.js';
-import { createToken } from '../lib/createToken.js';
 import { sendResetPasswordToken } from '../lib/sendResetPasswordToken.js';
+import { ValidResponse, ErrorResponse, EError, EStatus } from '../lib/response.js';
 
 import type { Request, Response } from 'express';
-import type { IUser } from '../models/User.js';
+import type { IAccessToken } from '../models/AccessToken.js';
 import type { IResetPasswordToken } from '../models/ResetPasswordToken.js';
+import type { IUser } from '../models/User.js';
 import type { IPasswordHash } from '../lib/hashPassword.js';
 
 type IName = string | undefined;
@@ -17,8 +19,12 @@ type ICode = string | undefined;
 
 type IFindUser = IUser | null;
 type ICreateUser = IUser | null;
+type IUpdateUser = IUser | null;
+
+type ICreateAccessToken = IAccessToken | null;
 
 type ICreateResetPasswordToken = IResetPasswordToken | null;
+type IUpdateResetPasswordToken = IResetPasswordToken | null;
 
 async function login(req: Request, res: Response) {
   const email: IEmail = req.body.email;
@@ -40,8 +46,8 @@ async function login(req: Request, res: Response) {
   // Look for the user in the database by email and password
   const findUser: IFindUser = await User.findOne(
     {
-      "email": email,
-      "password_hash": passwordHash
+      email: email,
+      password_hash: passwordHash
     }
   );
   // If no result, return an error
@@ -50,16 +56,18 @@ async function login(req: Request, res: Response) {
     return;
   }
 
-  // Create an user access token
-  const token: string = await createToken();
+  // Create an access token
+  const token: string = await createAccessToken();
 
-  // Insert the access token into the database
-  const updateUserToken = await User.updateOne(
-    { _id: findUser._id }, 
-    { $push: { tokens: token } }
+  // Create a new access token in the database
+  const createAccessTokenResponse = await AccessToken.create(
+    {
+      user: findUser._id,
+      token: token
+    }
   );
   // If something went wrong, return an error
-  if (updateUserToken === null) {
+  if (createAccessTokenResponse === null) {
     res.json(new ErrorResponse(EError.DATABASE_ERROR));
     return;
   }
@@ -82,7 +90,7 @@ async function signup(req: Request, res: Response) {
   // Look if the email is available
   const findUser: IFindUser = await User.findOne(
     {
-      "email": email
+      email: email
     }
   );
   // If user with that email already exists, return error
@@ -98,20 +106,32 @@ async function signup(req: Request, res: Response) {
     return;
   }
 
-  // Create an user access token
-  const token: string = await createToken();
-
   // Create a new user in the database
   const createUser: ICreateUser = await User.create(
     {
-      "name": name,
-      "email": email,
-      "password_hash": passwordHash,
-      "tokens": [ token ]
+      name: name,
+      email: email,
+      password_hash: passwordHash
     }
   );
   // If something went wrong, return an error
   if (createUser === null) {
+    res.json(new ErrorResponse(EError.DATABASE_ERROR));
+    return;
+  }
+
+  // Create an access token
+  const token: string = await createAccessToken();
+
+  // Create a new access token in the database
+  const createAccessTokenResponse: ICreateAccessToken = await AccessToken.create(
+    {
+      user: createUser._id,
+      token: token
+    }
+  );
+  // If something went wrong, return an error
+  if (createAccessTokenResponse === null) {
     res.json(new ErrorResponse(EError.DATABASE_ERROR));
     return;
   }
@@ -132,7 +152,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   // Look for the user in the database by email
   const findUser: IFindUser = await User.findOne(
     {
-      "email": email
+      email: email
     }
   );
   // If there is no user with that email, return error
@@ -147,8 +167,8 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   // Create a new reset password token in the database
   const createResetPasswordToken: ICreateResetPasswordToken = await ResetPasswordToken.create(
     {
-      "code": code,
-      "user": findUser._id
+      code: code,
+      user: findUser._id
     }
   );
   // If something went wrong, return an error
@@ -183,7 +203,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   // Look for the user in the database by email
   const findUser: IFindUser = await User.findOne(
     {
-      "email": email
+      email: email
     }
   );
   // If there is no user with that email, return error
@@ -192,11 +212,26 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
     return;
   }
   
-  // Look for a reset password token in the database by user id, code and if the token isn't already used
+  // Look for a reset password token in the database
+  // By user user id, reset password code and if the token isn't already consumed
+  const findResetPasswordToken = await ResetPasswordToken.findOne(
+    {
+      user: findUser._id,
+      "code": code,
+      "consumed": false
+    }
+  );
+  // If there is no result, return error
+  if (findResetPasswordToken === null) {
+    res.json(new ErrorResponse(EError.NO_RESULT));
+    return;
+  }
+  
   // Update the reset password token to consumed
-  const updateResetPasswordToken = await ResetPasswordToken.findOneAndUpdate(
-    { "user": findUser._id, "code": code, "consumed": false },
-    { consumed: true }
+  const updateResetPasswordToken: IUpdateResetPasswordToken = await ResetPasswordToken.findOneAndUpdate(
+    { _id: findResetPasswordToken._id },
+    { consumed: true },
+    { new: true }
   );
   // If something went wrong, return an error
   if (updateResetPasswordToken === null) {
@@ -212,9 +247,10 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   }
 
   // Update the user password in the database
-  const updateUser = await User.updateOne(
-    { "_id": findUser._id },
-    { "password_hash": passwordHash }
+  const updateUser: IUpdateUser = await User.findOneAndUpdate(
+    { _id: findUser._id },
+    { password_hash: passwordHash },
+    { new: true }
   );
 
    // If something went wrong, return an error
