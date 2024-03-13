@@ -285,6 +285,47 @@ async function forgotPasswordRequest(req: Request, res: Response) {
 async function forgotPasswordConfirmation(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
   const code: ParamValue = req.body.code;
+
+  // Check if all required values are defined
+  if (email === undefined || code === undefined) {
+    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
+    return;
+  }
+
+  // Look for the user in the database by email
+  const findUser: UserAction = await User.findOne(
+    {
+      email: email
+    }
+  );
+  // If there is no user with that email, return error
+  if (findUser === null) {
+    res.json(new ErrorResponse(ErrorType.NO_RESULT));
+    return;
+  }
+  
+  // Look for a reset password token in the database
+  // By user user id, reset password code and if the token isn't already consumed
+  const findResetPasswordToken: ResetPasswordTokenAction = await ResetPasswordToken.findOne(
+    {
+      user: findUser._id,
+      "code": parseInt(code),
+      "consumed": false
+    }
+  );
+  // If there is no result, return error
+  if (findResetPasswordToken === null) {
+    res.json(new ErrorResponse(ErrorType.NO_RESULT));
+    return;
+  }
+
+  // If all good, return OK
+  res.json(new ValidResponse());
+}
+
+async function forgotPasswordReset(req: Request, res: Response) {
+  const email: ParamValue = req.body.email;
+  const code: ParamValue = req.body.code;
   const password: ParamValue = req.body.password;
 
   // Check if all required values are defined
@@ -310,7 +351,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   const findResetPasswordToken: ResetPasswordTokenAction = await ResetPasswordToken.findOne(
     {
       user: findUser._id,
-      "code": code,
+      "code": parseInt(code),
       "consumed": false
     }
   );
@@ -353,4 +394,4 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-export default { find, login, signup, logout, forgotPasswordRequest, forgotPasswordConfirmation }
+export default { find, login, signup, logout, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordReset }

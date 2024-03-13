@@ -9,5 +9,6 @@ router.post("/signup", userController.signup);
 router.post("/logout", userController.logout);
 router.post("/forgot-password-request", userController.forgotPasswordRequest);
 router.post("/forgot-password-confirmation", userController.forgotPasswordConfirmation);
+router.post("/forgot-password-reset", userController.forgotPasswordReset);
 
 export default router;
