@@ -143,7 +143,7 @@ async function login(req: Request, res: Response) {
   }
 
   // If all good, return token
-  res.json(new ValidResponse({ token }));
+  res.json(new ValidResponse({ accessToken: token }));
 }
 
 async function signup(req: Request, res: Response) {
@@ -207,7 +207,7 @@ async function signup(req: Request, res: Response) {
   }
 
   // If all good, return token
-  res.json(new ValidResponse({ token }));
+  res.json(new ValidResponse({ accessToken: token }));
 }
 
 async function logout(req: Request, res: Response) {
