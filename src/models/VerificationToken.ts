@@ -1,18 +1,24 @@
 import { Schema, model, Types } from 'mongoose';
 
-type IResetPasswordToken = {
+type IVerificationToken = {
   _id: Types.ObjectId;
-  user: Types.ObjectId;
+  user?: Types.ObjectId;
+  email?: string;
   code: number;
   consumed: boolean;
   expiry_date: Date;
   timestamp: Date;
 }
 
-const schema = new Schema<IResetPasswordToken>(
+const schema = new Schema<IVerificationToken>(
   {
     user: {
       type: Schema.Types.ObjectId,
+      required: false,
+      ref: 'User'
+    },
+    email: {
+      type: String,
       required: true,
       ref: 'User'
     },
@@ -47,5 +53,5 @@ const schema = new Schema<IResetPasswordToken>(
   }
 );
 
-export const ResetPasswordToken = model<IResetPasswordToken>('Reset_Password_Token', schema);
-export type { IResetPasswordToken };
+export const VerificationToken = model<IVerificationToken>('Verification_Token', schema);
+export type { IVerificationToken };
