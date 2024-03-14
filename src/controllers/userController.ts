@@ -1,16 +1,16 @@
 import { Types } from 'mongoose';
 import { AccessToken } from '../models/AccessToken.js';
-import { ResetPasswordToken } from '../models/ResetPasswordToken.js';
+import { VerificationToken } from '../models/VerificationToken.js';
 import { User } from '../models/User.js';
 import { createAccessToken } from '../lib/createAccessToken.js';
 import { hashPassword } from '../lib/hashPassword.js';
-import { sendResetPasswordToken } from '../lib/sendResetPasswordToken.js';
-import { ValidResponse, ErrorResponse, ErrorType, ResponseStatus } from '../lib/response.js';
+import { VerificationType, sendVerificationToken } from '../lib/transmitMail.js';
+import { ValidResponse, ErrorResponse, ErrorType } from '../lib/response.js';
 
 import type { DeleteResult, UpdateResult } from 'mongodb';
 import type { Request, Response } from 'express';
 import type { IAccessToken } from '../models/AccessToken.js';
-import type { IResetPasswordToken } from '../models/ResetPasswordToken.js';
+import type { IVerificationToken } from '../models/VerificationToken.js';
 import type { IUser } from '../models/User.js';
 import type { PasswordHash } from '../lib/hashPassword.js';
 
@@ -24,7 +24,7 @@ type SearchModeParamValue = SearchMode | undefined;
 
 type UserAction = IUser | null;
 type AccessTokenAction = IAccessToken | null;
-type ResetPasswordTokenAction = IResetPasswordToken | null;
+type VerificationTokenAction = IVerificationToken | null;
 type AccessTokenUserExtendedAction = (Omit<IAccessToken, 'user'> & { user: IUser | null }) | null;
 
 async function find(req: Request, res: Response) {
@@ -32,7 +32,7 @@ async function find(req: Request, res: Response) {
   const id: ParamValue = req.body.id;
   const token: ParamValue = req.body.accessToken;
 
-  // Check if required mode value are defined
+  // Check if required mode value is defined
   if (mode === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
@@ -40,7 +40,7 @@ async function find(req: Request, res: Response) {
 
   switch (mode) {
     case SearchMode.Id: {
-      // Check if required id value are defined
+      // Check if required id value is defined
       if (id === undefined || !Types.ObjectId.isValid(id)) {
         res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
         return;
@@ -52,20 +52,19 @@ async function find(req: Request, res: Response) {
           _id: id
         }
       )
-
       // If there is no user with that id, return error
       if (findUser === null) {
         res.json(new ErrorResponse(ErrorType.NO_RESULT));
         return;
       }
 
+      // Return valid with only some fields
       const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findUser);
-
       res.json(new ValidResponse(userResponse));
     } break;
 
     case SearchMode.Token: {
-      // Check if required token value are defined
+      // Check if required token value is defined
       if (token === undefined) {
         res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
         return;
@@ -85,8 +84,8 @@ async function find(req: Request, res: Response) {
         return;
       }
 
+      // Return valid with only some fields
       const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findAccessTokenUserExtended.user);
-
       res.json(new ValidResponse(userResponse));
     } break;
   
@@ -100,7 +99,7 @@ async function login(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
   const password: ParamValue = req.body.password;
 
-  // Check if all required values are defined
+  // Check if all required values is defined
   if (email === undefined || password === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
@@ -126,7 +125,7 @@ async function login(req: Request, res: Response) {
     return;
   }
 
-  // Create an access token
+  // Create a random UUID token
   const token: string = await createAccessToken();
 
   // Create a new access token in the database
@@ -146,13 +145,36 @@ async function login(req: Request, res: Response) {
   res.json(new ValidResponse({ accessToken: token }));
 }
 
-async function signup(req: Request, res: Response) {
+async function logout(req: Request, res: Response) {
+  const token: ParamValue = req.body.accessToken;
+
+  // Check if required accessToken value is defined
+  if (token === undefined) {
+    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
+    return;
+  }
+
+  // Delete all accessTokens in database that has provided token
+  const deleteAccessToken: DeleteResult = await AccessToken.deleteMany(
+    {
+      token: token
+    }
+  );
+  // If something went wrong, return an error
+  if (deleteAccessToken.acknowledged === false) {
+    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
+    return;
+  }
+
+  res.json(new ValidResponse());
+}
+
+async function signupRequest(req: Request, res: Response) {
   const name: ParamValue = req.body.name;
   const email: ParamValue = req.body.email;
-  const password: ParamValue = req.body.password;
 
-  // Check if all required values are defined
-  if (name === undefined || email === undefined || password === undefined) {
+  // Check if all required values is defined
+  if (name === undefined || email === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
   }
@@ -166,6 +188,115 @@ async function signup(req: Request, res: Response) {
   // If user with that email already exists, return error
   if (findUser !== null) {
     res.json(new ErrorResponse(ErrorType.USER_EXISTS));
+    return;
+  }
+
+  // Delete all verification tokens in database that has provided email and that isn't consumed
+  const deleteVerificationToken: DeleteResult = await VerificationToken.deleteMany(
+    {
+      email,
+      consumed: false
+    }
+  );
+  // If something went wrong, return an error
+  if (deleteVerificationToken.acknowledged === false) {
+    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
+    return;
+  }
+
+  // Create a verification code
+  const code = Math.floor(100000 + Math.random() * 900000);
+
+  // Create a new verification token in the database
+  const createVerificationToken: VerificationTokenAction = await VerificationToken.create(
+    {
+      code: code,
+      email: email
+    }
+  );
+  // If something went wrong, return an error
+  if (createVerificationToken === null) {
+    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
+    return;
+  }
+
+  // Send an email to the user with the verification token
+  try {
+    await sendVerificationToken(VerificationType.Signup, name, email, code);
+  } catch {
+    res.json(new ErrorResponse(ErrorType.MAIL_ERROR));
+    return;
+  }
+
+  // If all good, return OK
+  res.json(new ValidResponse());
+}
+
+async function signupConfirmation(req: Request, res: Response) {
+  const email: ParamValue = req.body.email;
+  const code: ParamValue = req.body.code;
+
+  // Check if all required values is defined
+  if (email === undefined || code === undefined) {
+    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
+    return;
+  }
+  
+  // Look for a verification token in the database 
+  // By email, verification code and if the token isn't already consumed
+  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
+    {
+      email,
+      code: parseInt(code),
+      consumed: false
+    }
+  );
+  // If there is no result, return error
+  if (findVerificationToken === null) {
+    res.json(new ErrorResponse(ErrorType.NO_RESULT));
+    return;
+  }
+
+  // If all good, return OK
+  res.json(new ValidResponse());
+}
+
+async function signupSubmit(req: Request, res: Response) {
+  const name: ParamValue = req.body.name;
+  const email: ParamValue = req.body.email;
+  const code: ParamValue = req.body.code;
+  const password: ParamValue = req.body.password;
+
+  // Check if all required values is defined
+  if (name === undefined || email === undefined || code === undefined || password === undefined) {
+    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
+    return;
+  }
+
+  // Look if the email is available
+  const findUser: UserAction = await User.findOne(
+    {
+      email: email
+    }
+  );
+  // If user with that email already exists, return error
+  if (findUser !== null) {
+    res.json(new ErrorResponse(ErrorType.USER_EXISTS));
+    return;
+  }
+
+  // Look for a verification token in the database 
+  // By email, verification code and if the token isn't already consumed
+  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
+    {
+      email,
+      code: parseInt(code),
+      consumed: false
+    }
+  );
+  // If there is no result, return error
+  if (findVerificationToken === null) {
+    res.json(new ErrorResponse(ErrorType.NO_RESULT));
     return;
   }
 
@@ -190,10 +321,10 @@ async function signup(req: Request, res: Response) {
     return;
   }
 
-  // Create an access token
+  // Create a random UUID token
   const token: string = await createAccessToken();
 
-  // Create a new access token in the database
+  // Add a new access token in the database
   const createAccessTokenResponse: AccessTokenAction = await AccessToken.create(
     {
       user: createUser._id,
@@ -206,37 +337,25 @@ async function signup(req: Request, res: Response) {
     return;
   }
 
-  // If all good, return token
-  res.json(new ValidResponse({ accessToken: token }));
-}
-
-async function logout(req: Request, res: Response) {
-  const token: ParamValue = req.body.accessToken;
-
-  // Check if all required values are defined
-  if (token === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
-  }
-
-  const deleteAccessToken: DeleteResult = await AccessToken.deleteMany(
-    {
-      token: token
-    }
+  // Update the verification token to consumed
+  const updateVerificationToken: UpdateResult = await VerificationToken.updateOne(
+    { _id: findVerificationToken._id },
+    { consumed: true }
   );
   // If something went wrong, return an error
-  if (deleteAccessToken.acknowledged === false) {
+  if (updateVerificationToken.acknowledged === false) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
     return;
   }
 
-  res.json(new ValidResponse());
+  // If all good, return access token
+  res.json(new ValidResponse({ accessToken: token }));
 }
 
 async function forgotPasswordRequest(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
 
-  // Check if all required values are defined
+  // Check if all required values is defined
   if (email === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
@@ -254,25 +373,26 @@ async function forgotPasswordRequest(req: Request, res: Response) {
     return;
   }
 
-  // Create a reset password token
+  // Create a verification code
   const code = Math.floor(100000 + Math.random() * 900000);
 
-  // Create a new reset password token in the database
-  const createResetPasswordToken: ResetPasswordTokenAction = await ResetPasswordToken.create(
+  // Create a new verification token in the database
+  const createVerificationToken: VerificationTokenAction = await VerificationToken.create(
     {
       code: code,
+      email: email,
       user: findUser._id
     }
   );
   // If something went wrong, return an error
-  if (createResetPasswordToken === null) {
+  if (createVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
     return;
   }
 
-  // Send an email to the user with the reset password token
+  // Send an email to the user with the verification code
   try {
-    await sendResetPasswordToken(findUser.email, findUser.name, code);
+    await sendVerificationToken(VerificationType.ForgotPassword, findUser.name, findUser.email, code);
   } catch {
     res.json(new ErrorResponse(ErrorType.MAIL_ERROR));
     return;
@@ -286,7 +406,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
   const code: ParamValue = req.body.code;
 
-  // Check if all required values are defined
+  // Check if all required values is defined
   if (email === undefined || code === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
@@ -304,17 +424,17 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
     return;
   }
   
-  // Look for a reset password token in the database
-  // By user user id, reset password code and if the token isn't already consumed
-  const findResetPasswordToken: ResetPasswordTokenAction = await ResetPasswordToken.findOne(
+  // Look for a verification token in the database
+  // By user id, verification code and if the token isn't already consumed
+  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
     {
       user: findUser._id,
-      "code": parseInt(code),
-      "consumed": false
+      code: parseInt(code),
+      consumed: false
     }
   );
   // If there is no result, return error
-  if (findResetPasswordToken === null) {
+  if (findVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
     return;
   }
@@ -323,12 +443,12 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-async function forgotPasswordReset(req: Request, res: Response) {
+async function forgotPasswordSubmit(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
   const code: ParamValue = req.body.code;
   const password: ParamValue = req.body.password;
 
-  // Check if all required values are defined
+  // Check if all required values is defined
   if (email === undefined || code === undefined || password === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
@@ -345,30 +465,19 @@ async function forgotPasswordReset(req: Request, res: Response) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
     return;
   }
-  
-  // Look for a reset password token in the database
-  // By user user id, reset password code and if the token isn't already consumed
-  const findResetPasswordToken: ResetPasswordTokenAction = await ResetPasswordToken.findOne(
+
+  // Look for a verification token in the database
+  // By user id, verification code and if the token isn't already consumed
+  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
     {
       user: findUser._id,
-      "code": parseInt(code),
-      "consumed": false
+      code: parseInt(code),
+      consumed: false
     }
   );
   // If there is no result, return error
-  if (findResetPasswordToken === null) {
+  if (findVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
-  }
-  
-  // Update the reset password token to consumed
-  const updateResetPasswordToken: UpdateResult = await ResetPasswordToken.updateOne(
-    { _id: findResetPasswordToken._id },
-    { consumed: true }
-  );
-  // If something went wrong, return an error
-  if (updateResetPasswordToken.acknowledged === false) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
     return;
   }
 
@@ -390,8 +499,19 @@ async function forgotPasswordReset(req: Request, res: Response) {
     return;
   }
 
+  // Update the verification token to consumed
+  const updateVerificationToken: UpdateResult = await VerificationToken.updateOne(
+    { _id: findVerificationToken._id },
+    { consumed: true }
+  );
+  // If something went wrong, return an error
+  if (updateVerificationToken.acknowledged === false) {
+    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
+    return;
+  }
+
   // If all good, return OK
   res.json(new ValidResponse());
 }
 
-export default { find, login, signup, logout, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordReset }
+export default { find, login, logout, signupRequest, signupConfirmation, signupSubmit, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordSubmit }

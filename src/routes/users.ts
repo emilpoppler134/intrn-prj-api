@@ -5,10 +5,12 @@ const router = express.Router();
 
 router.post("/find", userController.find);
 router.post("/login", userController.login);
-router.post("/signup", userController.signup);
 router.post("/logout", userController.logout);
+router.post("/signup-request", userController.signupRequest);
+router.post("/signup-confirmation", userController.signupConfirmation);
+router.post("/signup-submit", userController.signupSubmit);
 router.post("/forgot-password-request", userController.forgotPasswordRequest);
 router.post("/forgot-password-confirmation", userController.forgotPasswordConfirmation);
-router.post("/forgot-password-reset", userController.forgotPasswordReset);
+router.post("/forgot-password-submit", userController.forgotPasswordSubmit);
 
 export default router;
