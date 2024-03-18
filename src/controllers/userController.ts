@@ -32,6 +32,9 @@ async function find(req: Request, res: Response) {
   const id: ParamValue = req.body.id;
   const token: ParamValue = req.body.accessToken;
 
+  const date = new Date();
+  date.setHours(date.getHours() + 1);
+
   // Check if required mode value is defined
   if (mode === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
@@ -73,7 +76,10 @@ async function find(req: Request, res: Response) {
       // Look for the access token in the database and extend the user
       const findAccessTokenUserExtended: AccessTokenUserExtendedAction = await AccessToken.findOne(
         {
-          token: token
+          token: token,
+          expiry_date: {
+            $gte: date
+          }
         }
       )
       .populate({ path: "user", model: "User" });
@@ -236,6 +242,9 @@ async function signupConfirmation(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
   const code: ParamValue = req.body.code;
 
+  const date = new Date();
+  date.setHours(date.getHours() + 1);
+
   // Check if all required values is defined
   if (email === undefined || code === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
@@ -248,7 +257,10 @@ async function signupConfirmation(req: Request, res: Response) {
     {
       email,
       code: parseInt(code),
-      consumed: false
+      consumed: false,
+      expiry_date: {
+        $gte: date
+      }
     }
   );
   // If there is no result, return error
@@ -291,7 +303,10 @@ async function signupSubmit(req: Request, res: Response) {
     {
       email,
       code: parseInt(code),
-      consumed: false
+      consumed: false,
+      expiry_date: {
+        $gte: new Date()
+      }
     }
   );
   // If there is no result, return error
@@ -406,6 +421,9 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
   const code: ParamValue = req.body.code;
 
+  const date = new Date();
+  date.setHours(date.getHours() + 1);
+
   // Check if all required values is defined
   if (email === undefined || code === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
@@ -430,7 +448,10 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
     {
       user: findUser._id,
       code: parseInt(code),
-      consumed: false
+      consumed: false,
+      expiry_date: {
+        $gte: date
+      }
     }
   );
   // If there is no result, return error
@@ -447,6 +468,9 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   const email: ParamValue = req.body.email;
   const code: ParamValue = req.body.code;
   const password: ParamValue = req.body.password;
+
+  const date = new Date();
+  date.setHours(date.getHours() + 1);
 
   // Check if all required values is defined
   if (email === undefined || code === undefined || password === undefined) {
@@ -472,7 +496,10 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
     {
       user: findUser._id,
       code: parseInt(code),
-      consumed: false
+      consumed: false,
+      expiry_date: {
+        $gte: date
+      }
     }
   );
   // If there is no result, return error
