@@ -95,7 +95,7 @@ async function validateToken(req: Request, res: Response) {
     // Verify JWT token
     const tokenPayload = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
     // If all good, return token payload 
-    res.json(new ValidResponse({ tokenPayload }));
+    res.json(new ValidResponse(tokenPayload));
   } catch {
     return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
   }
