@@ -54,4 +54,3 @@ const schema = new Schema<IVerificationToken>(
 );
 
 export const VerificationToken = model<IVerificationToken>('Verification_Token', schema);
-export type { IVerificationToken };

@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.post("/find", userController.find);
 router.post("/login", userController.login);
-router.post("/logout", userController.logout);
+router.post("/validate-token", userController.validateToken);
 router.post("/signup-request", userController.signupRequest);
 router.post("/signup-confirmation", userController.signupConfirmation);
 router.post("/signup-submit", userController.signupSubmit);

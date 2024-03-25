@@ -1,104 +1,43 @@
+import jwt from 'jsonwebtoken';
 import { Types } from 'mongoose';
-import { AccessToken } from '../models/AccessToken.js';
-import { VerificationToken } from '../models/VerificationToken.js';
-import { User } from '../models/User.js';
-import { createAccessToken } from '../lib/createAccessToken.js';
-import { hashPassword } from '../lib/hashPassword.js';
-import { VerificationType, sendVerificationToken } from '../lib/transmitMail.js';
-import { ValidResponse, ErrorResponse, ErrorType } from '../lib/response.js';
-
 import type { DeleteResult, UpdateResult } from 'mongodb';
 import type { Request, Response } from 'express';
-import type { IAccessToken } from '../models/AccessToken.js';
-import type { IVerificationToken } from '../models/VerificationToken.js';
-import type { IUser } from '../models/User.js';
-import type { PasswordHash } from '../lib/hashPassword.js';
 
-enum SearchMode {
-  Id = "Id",
-  Token = "AccessToken"
-}
+import { User } from '../models/User.js';
+import { VerificationToken } from '../models/VerificationToken.js';
+import { hashPassword } from '../lib/hashPassword.js';
+import { VerificationType, sendVerificationToken } from '../lib/transmitMail.js';
+import { ValidResponse, ErrorResponse } from '../lib/response.js';
+import { ErrorType } from '../types/error.js';
+import { TokenPayload } from '../types/authorization.js';
+import { ACCESS_TOKEN_SECRET } from '../config.js';
 
 type ParamValue = string | undefined;
-type SearchModeParamValue = SearchMode | undefined;
-
-type UserAction = IUser | null;
-type AccessTokenAction = IAccessToken | null;
-type VerificationTokenAction = IVerificationToken | null;
-type AccessTokenUserExtendedAction = (Omit<IAccessToken, 'user'> & { user: IUser | null }) | null;
 
 async function find(req: Request, res: Response) {
-  const mode: SearchModeParamValue = req.body.mode;
   const id: ParamValue = req.body.id;
-  const token: ParamValue = req.body.accessToken;
 
-  const date = new Date();
-  date.setHours(date.getHours() + 1);
-
-  // Check if required mode value is defined
-  if (mode === undefined) {
+  // Check if required id value is defined
+  if (id === undefined || !Types.ObjectId.isValid(id)) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
   }
 
-  switch (mode) {
-    case SearchMode.Id: {
-      // Check if required id value is defined
-      if (id === undefined || !Types.ObjectId.isValid(id)) {
-        res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-        return;
-      }
-
-      // Look for the user in the database by id
-      const findUser: UserAction = await User.findOne(
-        {
-          _id: id
-        }
-      )
-      // If there is no user with that id, return error
-      if (findUser === null) {
-        res.json(new ErrorResponse(ErrorType.NO_RESULT));
-        return;
-      }
-
-      // Return valid with only some fields
-      const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findUser);
-      res.json(new ValidResponse(userResponse));
-    } break;
-
-    case SearchMode.Token: {
-      // Check if required token value is defined
-      if (token === undefined) {
-        res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-        return;
-      }
-
-      // Look for the access token in the database and extend the user
-      const findAccessTokenUserExtended: AccessTokenUserExtendedAction = await AccessToken.findOne(
-        {
-          token: token,
-          expiry_date: {
-            $gte: date
-          }
-        }
-      )
-      .populate({ path: "user", model: "User" });
-
-      // If there is no access token or user with provided token, return error
-      if (findAccessTokenUserExtended === null || findAccessTokenUserExtended.user === null) {
-        res.json(new ErrorResponse(ErrorType.NO_RESULT));
-        return;
-      }
-
-      // Return valid with only some fields
-      const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findAccessTokenUserExtended.user);
-      res.json(new ValidResponse(userResponse));
-    } break;
-  
-    default: {
-      res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    } break;
+  // Look for the user in the database by id
+  const findUser = await User.findOne(
+    {
+      _id: id
+    }
+  )
+  // If there is no user with that id, return error
+  if (findUser === null) {
+    res.json(new ErrorResponse(ErrorType.NO_RESULT));
+    return;
   }
+
+  // Return valid with only some fields
+  const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findUser);
+  res.json(new ValidResponse(userResponse));
 }
 
 async function login(req: Request, res: Response) {
@@ -112,14 +51,14 @@ async function login(req: Request, res: Response) {
   }
 
   // Hash the password 
-  const passwordHash: PasswordHash = hashPassword(password);
+  const passwordHash = hashPassword(password);
   if (passwordHash === null) {
     res.json(new ErrorResponse(ErrorType.HASH_PARSING));
     return;
   }
 
   // Look for the user in the database by email and password
-  const findUser: UserAction = await User.findOne(
+  const findUser = await User.findOne(
     {
       email: email,
       password_hash: passwordHash
@@ -131,48 +70,35 @@ async function login(req: Request, res: Response) {
     return;
   }
 
-  // Create a random UUID token
-  const token: string = await createAccessToken();
+  const payload = (({ _id, name, email }) => ({ _id, name, email }))(findUser);
 
-  // Create a new access token in the database
-  const createAccessTokenResponse: AccessTokenAction = await AccessToken.create(
-    {
-      user: findUser._id,
-      token: token
-    }
-  );
-  // If something went wrong, return an error
-  if (createAccessTokenResponse === null) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+  try {
+    // Sign a JWT token with user information
+    const token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
+    // If all good, return JWT token
+    res.json(new ValidResponse({ token }));
+  } catch {
+    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
   }
-
-  // If all good, return token
-  res.json(new ValidResponse({ accessToken: token }));
 }
 
-async function logout(req: Request, res: Response) {
-  const token: ParamValue = req.body.accessToken;
+async function validateToken(req: Request, res: Response) {
+  const authorizationHeader = req.headers['authorization'];
+  const token = authorizationHeader && authorizationHeader.replace(/^Bearer\s/, '');
 
-  // Check if required accessToken value is defined
+  // Check if token is defined in authorization headers
   if (token === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
   }
 
-  // Delete all accessTokens in database that has provided token
-  const deleteAccessToken: DeleteResult = await AccessToken.deleteMany(
-    {
-      token: token
-    }
-  );
-  // If something went wrong, return an error
-  if (deleteAccessToken.acknowledged === false) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+  try {
+    // Verify JWT token
+    const tokenPayload = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
+    // If all good, return token payload 
+    res.json(new ValidResponse({ tokenPayload }));
+  } catch {
+    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
   }
-
-  res.json(new ValidResponse());
 }
 
 async function signupRequest(req: Request, res: Response) {
@@ -186,7 +112,7 @@ async function signupRequest(req: Request, res: Response) {
   }
 
   // Look if the email is available
-  const findUser: UserAction = await User.findOne(
+  const findUser = await User.findOne(
     {
       email: email
     }
@@ -214,7 +140,7 @@ async function signupRequest(req: Request, res: Response) {
   const code = Math.floor(100000 + Math.random() * 900000);
 
   // Create a new verification token in the database
-  const createVerificationToken: VerificationTokenAction = await VerificationToken.create(
+  const createVerificationToken = await VerificationToken.create(
     {
       code: code,
       email: email
@@ -253,7 +179,7 @@ async function signupConfirmation(req: Request, res: Response) {
   
   // Look for a verification token in the database 
   // By email, verification code and if the token isn't already consumed
-  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
+  const findVerificationToken = await VerificationToken.findOne(
     {
       email,
       code: parseInt(code),
@@ -286,7 +212,7 @@ async function signupSubmit(req: Request, res: Response) {
   }
 
   // Look if the email is available
-  const findUser: UserAction = await User.findOne(
+  const findUser = await User.findOne(
     {
       email: email
     }
@@ -299,7 +225,7 @@ async function signupSubmit(req: Request, res: Response) {
 
   // Look for a verification token in the database 
   // By email, verification code and if the token isn't already consumed
-  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
+  const findVerificationToken = await VerificationToken.findOne(
     {
       email,
       code: parseInt(code),
@@ -316,14 +242,14 @@ async function signupSubmit(req: Request, res: Response) {
   }
 
   // Hash the password
-  const passwordHash: PasswordHash = hashPassword(password);
+  const passwordHash = hashPassword(password);
   if (passwordHash === null) {
     res.json(new ErrorResponse(ErrorType.HASH_PARSING));
     return;
   }
 
   // Create a new user in the database
-  const createUser: UserAction = await User.create(
+  const createUser = await User.create(
     {
       name: name,
       email: email,
@@ -336,20 +262,14 @@ async function signupSubmit(req: Request, res: Response) {
     return;
   }
 
-  // Create a random UUID token
-  const token: string = await createAccessToken();
+  const payload = (({ _id, name, email }) => ({ _id, name, email }))(createUser);
+  let token;
 
-  // Add a new access token in the database
-  const createAccessTokenResponse: AccessTokenAction = await AccessToken.create(
-    {
-      user: createUser._id,
-      token: token
-    }
-  );
-  // If something went wrong, return an error
-  if (createAccessTokenResponse === null) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+  try {
+    // Sign a JWT token with user information
+    token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
+  } catch {
+    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
   }
 
   // Update the verification token to consumed
@@ -363,8 +283,8 @@ async function signupSubmit(req: Request, res: Response) {
     return;
   }
 
-  // If all good, return access token
-  res.json(new ValidResponse({ accessToken: token }));
+  // If all good, return JWT token
+  res.json(new ValidResponse({ token: token }));
 }
 
 async function forgotPasswordRequest(req: Request, res: Response) {
@@ -377,7 +297,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   }
 
   // Look for the user in the database by email
-  const findUser: UserAction = await User.findOne(
+  const findUser = await User.findOne(
     {
       email: email
     }
@@ -392,7 +312,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   const code = Math.floor(100000 + Math.random() * 900000);
 
   // Create a new verification token in the database
-  const createVerificationToken: VerificationTokenAction = await VerificationToken.create(
+  const createVerificationToken = await VerificationToken.create(
     {
       code: code,
       email: email,
@@ -431,7 +351,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   }
 
   // Look for the user in the database by email
-  const findUser: UserAction = await User.findOne(
+  const findUser = await User.findOne(
     {
       email: email
     }
@@ -444,7 +364,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   
   // Look for a verification token in the database
   // By user id, verification code and if the token isn't already consumed
-  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
+  const findVerificationToken = await VerificationToken.findOne(
     {
       user: findUser._id,
       code: parseInt(code),
@@ -479,7 +399,7 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   }
 
   // Look for the user in the database by email
-  const findUser: UserAction = await User.findOne(
+  const findUser = await User.findOne(
     {
       email: email
     }
@@ -492,7 +412,7 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
 
   // Look for a verification token in the database
   // By user id, verification code and if the token isn't already consumed
-  const findVerificationToken: VerificationTokenAction = await VerificationToken.findOne(
+  const findVerificationToken = await VerificationToken.findOne(
     {
       user: findUser._id,
       code: parseInt(code),
@@ -509,7 +429,7 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   }
 
   // Hash the new password
-  const passwordHash: PasswordHash = hashPassword(password);
+  const passwordHash = hashPassword(password);
   if (passwordHash === null) {
     res.json(new ErrorResponse(ErrorType.HASH_PARSING));
     return;
@@ -541,4 +461,4 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-export default { find, login, logout, signupRequest, signupConfirmation, signupSubmit, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordSubmit }
+export default { find, login, validateToken, signupRequest, signupConfirmation, signupSubmit, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordSubmit }

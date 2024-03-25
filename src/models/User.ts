@@ -35,4 +35,4 @@ const schema = new Schema<IUser>(
 );
 
 export const User = model<IUser>('User', schema);
-export type { IUser };
+export type { IUser }
