@@ -1,12 +1,12 @@
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-import { ErrorResponse } from '../lib/response';
-import { ErrorType } from '../types/error';
-import type { TokenPayload, AuthorizedRequest } from '../types/authorization';
-import { ACCESS_TOKEN_SECRET } from '../config';
+import { ACCESS_TOKEN_SECRET } from '../config.js';
+import { ErrorResponse } from '../lib/response.js';
+import { ErrorType } from '../types/Error.js';
+import type { TokenPayload } from '../types/TokenPayload';
 
-async function authorization(req: AuthorizedRequest, res: Response, next: NextFunction) {
+async function authorization(req: Request, res: Response, next: NextFunction) {
   const authorizationHeader = req.headers['authorization'];
   const token = authorizationHeader && authorizationHeader.replace(/^Bearer\s/, '');
 
@@ -16,7 +16,7 @@ async function authorization(req: AuthorizedRequest, res: Response, next: NextFu
 
   try {
     const user = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
-    req.user = user;
+    res.locals.user = user;
 
     next();
   } catch {

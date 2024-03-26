@@ -1,4 +1,4 @@
-import { ErrorType } from "../types/error";
+import { ErrorType } from "../types/Error";
 
 enum ResponseStatus {
   OK = "OK",

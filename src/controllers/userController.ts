@@ -3,16 +3,15 @@ import { Types } from 'mongoose';
 import type { DeleteResult, UpdateResult } from 'mongodb';
 import type { Request, Response } from 'express';
 
+import { ACCESS_TOKEN_SECRET } from '../config.js';
 import { User } from '../models/User.js';
 import { VerificationToken } from '../models/VerificationToken.js';
 import { hashPassword } from '../lib/hashPassword.js';
 import { VerificationType, sendVerificationToken } from '../lib/transmitMail.js';
 import { ValidResponse, ErrorResponse } from '../lib/response.js';
-import { ErrorType } from '../types/error.js';
-import { TokenPayload } from '../types/authorization.js';
-import { ACCESS_TOKEN_SECRET } from '../config.js';
-
-type ParamValue = string | undefined;
+import { ErrorType } from '../types/Error.js';
+import { TokenPayload } from '../types/TokenPayload.js';
+import { ParamValue } from '../types/ParamValue.js';
 
 async function find(req: Request, res: Response) {
   const id: ParamValue = req.body.id;
