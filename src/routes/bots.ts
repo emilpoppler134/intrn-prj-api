@@ -1,12 +1,13 @@
 import express from 'express';
 import botController from '../controllers/botController.js';
 import authorization from '../middleware/authorization.js';
+import subscriptionAuthorization from '../middleware/subscriptionAuthorization.js';
 
 const router = express.Router();
 
-router.post("/find", authorization, botController.find);
 router.post("/list", authorization, botController.list);
-router.post("/create", authorization, botController.create);
-router.post("/remove", authorization, botController.remove);
+router.post("/find", authorization, subscriptionAuthorization, botController.find);
+router.post("/create", authorization, subscriptionAuthorization, botController.create);
+router.post("/remove", authorization, subscriptionAuthorization, botController.remove);
 
 export default router;

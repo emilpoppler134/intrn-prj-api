@@ -5,7 +5,14 @@ type IUser = {
   name: string;
   email: string;
   password_hash: string;
+  subscription: Subscription;
+  customer_id: string;
   timestamp: Date;
+}
+
+type Subscription = {
+  status: "active" | "past-due" | null;
+  subscription_id: string | null;
 }
 
 const schema = new Schema<IUser>(
@@ -19,6 +26,23 @@ const schema = new Schema<IUser>(
       required: true
     },
     password_hash: {
+      type: String,
+      required: true
+    },
+    subscription: {
+      status: {
+        type: String,
+        required: false,
+        enum: ["active", "past-due"],
+        default: () => null
+      },
+      subscription_id: {
+        type: String,
+        required: false,
+        default: () => null
+      }
+    },
+    customer_id: {
       type: String,
       required: true
     },

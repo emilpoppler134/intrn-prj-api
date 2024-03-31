@@ -20,6 +20,7 @@ export const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
 export const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
 
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 export const API_ADDRESS = process.env.API_ADDRESS;
 export const PORT = parseInt(process.env.PORT || "4000");

@@ -1,42 +1,65 @@
+import { Request, Response } from 'express';
+import { DeleteResult, UpdateResult } from 'mongodb';
 import jwt from 'jsonwebtoken';
-import { Types } from 'mongoose';
-import type { DeleteResult, UpdateResult } from 'mongodb';
-import type { Request, Response } from 'express';
+import Stripe from 'stripe';
 
-import { ACCESS_TOKEN_SECRET } from '../config.js';
+import { ACCESS_TOKEN_SECRET, STRIPE_SECRET_KEY } from '../config.js';
 import { User } from '../models/User.js';
 import { VerificationToken } from '../models/VerificationToken.js';
 import { hashPassword } from '../lib/hashPassword.js';
 import { VerificationType, sendVerificationToken } from '../lib/transmitMail.js';
 import { ValidResponse, ErrorResponse } from '../lib/response.js';
 import { ErrorType } from '../types/Error.js';
-import { TokenPayload } from '../types/TokenPayload.js';
 import { ParamValue } from '../types/ParamValue.js';
+import { TokenPayload } from '../types/TokenPayload.js';
 
-async function find(req: Request, res: Response) {
-  const id: ParamValue = req.body.id;
+const stripe = new Stripe(STRIPE_SECRET_KEY);
 
-  // Check if required id value is defined
-  if (id === undefined || !Types.ObjectId.isValid(id)) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+async function validateToken(req: Request, res: Response) {
+  const authorizationHeader = req.headers['authorization'];
+  const token = authorizationHeader && authorizationHeader.replace(/^Bearer\s/, '');
+
+  // Check if token is defined in authorization headers
+  if (token === undefined) {
+    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
   }
+
+  try {
+    // Verify JWT token
+    const tokenPayload = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
+    // If all good, return token payload 
+    res.json(new ValidResponse(tokenPayload));
+  } catch {
+    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
+  }
+}
+
+async function signNewToken(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
 
   // Look for the user in the database by id
   const findUser = await User.findOne(
     {
-      _id: id
+      _id: user._id
     }
-  )
-  // If there is no user with that id, return error
+  );
+
+  // If no result, return an error
   if (findUser === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
     return;
   }
 
-  // Return valid with only some fields
-  const userResponse = (({ _id, name, email, timestamp }) => ({ _id, name, email, timestamp }))(findUser);
-  res.json(new ValidResponse(userResponse));
+  const payload = (({ _id, name, email, subscription, customer_id }) => ({ _id, name, email, subscription, customer_id }))(findUser);
+
+  try {
+    // Sign a JWT token with user information
+    const token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
+    // If all good, return JWT token
+    res.json(new ValidResponse({ token }));
+  } catch {
+    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
+  }
 }
 
 async function login(req: Request, res: Response) {
@@ -63,13 +86,14 @@ async function login(req: Request, res: Response) {
       password_hash: passwordHash
     }
   );
+
   // If no result, return an error
   if (findUser === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
     return;
   }
 
-  const payload = (({ _id, name, email }) => ({ _id, name, email }))(findUser);
+  const payload = (({ _id, name, email, subscription, customer_id }) => ({ _id, name, email, subscription, customer_id }))(findUser);
 
   try {
     // Sign a JWT token with user information
@@ -78,25 +102,6 @@ async function login(req: Request, res: Response) {
     res.json(new ValidResponse({ token }));
   } catch {
     res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
-  }
-}
-
-async function validateToken(req: Request, res: Response) {
-  const authorizationHeader = req.headers['authorization'];
-  const token = authorizationHeader && authorizationHeader.replace(/^Bearer\s/, '');
-
-  // Check if token is defined in authorization headers
-  if (token === undefined) {
-    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
-  }
-
-  try {
-    // Verify JWT token
-    const tokenPayload = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
-    // If all good, return token payload 
-    res.json(new ValidResponse(tokenPayload));
-  } catch {
-    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
   }
 }
 
@@ -118,7 +123,7 @@ async function signupRequest(req: Request, res: Response) {
   );
   // If user with that email already exists, return error
   if (findUser !== null) {
-    res.json(new ErrorResponse(ErrorType.USER_EXISTS));
+    res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
     return;
   }
 
@@ -218,7 +223,7 @@ async function signupSubmit(req: Request, res: Response) {
   );
   // If user with that email already exists, return error
   if (findUser !== null) {
-    res.json(new ErrorResponse(ErrorType.USER_EXISTS));
+    res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
     return;
   }
 
@@ -247,28 +252,36 @@ async function signupSubmit(req: Request, res: Response) {
     return;
   }
 
+  // Create a customer in stripe and receive its id
+  const customerId = await (
+    async(name: string, email: string): Promise<string | null> => {
+      try {
+        const customer = await stripe.customers.create({ name, email });
+        return customer.id
+      } catch {
+        return null;
+      }
+    }
+  )(name, email);
+
+  if (customerId === null) {
+    res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
+    return;
+  }
+
   // Create a new user in the database
   const createUser = await User.create(
     {
       name: name,
       email: email,
-      password_hash: passwordHash
+      password_hash: passwordHash,
+      customer_id: customerId
     }
   );
   // If something went wrong, return an error
   if (createUser === null) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
     return;
-  }
-
-  const payload = (({ _id, name, email }) => ({ _id, name, email }))(createUser);
-  let token;
-
-  try {
-    // Sign a JWT token with user information
-    token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
-  } catch {
-    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
   }
 
   // Update the verification token to consumed
@@ -282,8 +295,16 @@ async function signupSubmit(req: Request, res: Response) {
     return;
   }
 
-  // If all good, return JWT token
-  res.json(new ValidResponse({ token: token }));
+  const payload = (({ _id, name, email, subscription, customer_id }) => ({ _id, name, email, subscription, customer_id }))(createUser);
+
+  try {
+    // Sign a JWT token with user information
+    const token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
+    // If all good, return JWT token
+    res.json(new ValidResponse({ token }));
+  } catch {
+    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
+  }  
 }
 
 async function forgotPasswordRequest(req: Request, res: Response) {
@@ -460,4 +481,4 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-export default { find, login, validateToken, signupRequest, signupConfirmation, signupSubmit, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordSubmit }
+export default { validateToken, signNewToken, login, signupRequest, signupConfirmation, signupSubmit, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordSubmit }

@@ -74,7 +74,7 @@ async function create(req: Request, res: Response) {
   );
   // If bot with that name already exists, return error
   if (findBot !== null) {
-    res.json(new ErrorResponse(ErrorType.BOT_EXISTS));
+    res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
     return;
   }
 

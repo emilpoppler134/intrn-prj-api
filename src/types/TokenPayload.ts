@@ -1,5 +1,3 @@
-import type { IUser } from "../models/User";
+import { IUser } from "../models/User.js";
 
-type TokenPayload = Omit<IUser, 'password_hash' | 'timestamp'>;
-
-export type { TokenPayload }
+export type TokenPayload = Omit<IUser, 'password_hash' | 'timestamp'>;

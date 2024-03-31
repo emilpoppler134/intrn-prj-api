@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { ACCESS_TOKEN_SECRET } from '../config.js';
 import { ErrorResponse } from '../lib/response.js';
 import { ErrorType } from '../types/Error.js';
-import type { TokenPayload } from '../types/TokenPayload';
+import { TokenPayload } from '../types/TokenPayload.js';
 
 async function authorization(req: Request, res: Response, next: NextFunction) {
   const authorizationHeader = req.headers['authorization'];
