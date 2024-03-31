@@ -181,11 +181,11 @@ async function find(req: Request, res: Response) {
       id: subscription.id,
       name: product.name,
       price: subscriptionItem.price.unit_amount / 100,
-      current_period_start: subscription.current_period_start,
-      current_period_end: subscription.current_period_end,
-      days_until_due: subscription.days_until_due,
-      default_payment_method: subscription.default_payment_method,
-      created: subscription.created
+      current_period_start: new Date(subscription.current_period_start * 1000),
+      current_period_end: new Date(subscription.current_period_end * 1000),
+      days_until_due: subscription.days_until_due as number,
+      default_payment_method: subscription.default_payment_method as string,
+      created: new Date(subscription.created * 1000)
     }
 
     res.json(new ValidResponse(subscriptionResponse));
@@ -251,6 +251,12 @@ async function cancel(req: Request, res: Response) {
     if (canceledSubscription.status !== "canceled") {
       throw new Error();
     }
+
+    // Update the database so user gets the subscription status and id
+    await User.updateOne(
+      { _id: user._id },
+      { subscription: { status: null, subscription_id: null }}
+    );
 
     res.json(new ValidResponse());
   } catch {
