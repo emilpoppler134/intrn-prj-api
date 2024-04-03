@@ -56,11 +56,9 @@ async function list(req: Request, res: Response) {
 async function create(req: Request, res: Response) {
   const user: TokenPayload = res.locals.user;
   const name: ParamValue = req.body.name;
-  const personality: ParamValue = req.body.personality;
-  const photo: ParamValue = req.body.photo;
 
   // Check if all required values is defined
-  if (name === undefined || personality === undefined || photo === undefined) {
+  if (name === undefined) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
   }
@@ -69,7 +67,7 @@ async function create(req: Request, res: Response) {
   const findBot = await Bot.findOne(
     {
       user: user._id,
-      name
+      name: { $regex: new RegExp("^" + name.toLowerCase(), "i") }
     }
   );
   // If bot with that name already exists, return error
@@ -82,9 +80,7 @@ async function create(req: Request, res: Response) {
   const createBot = await Bot.create(
     {
       user: user._id,
-      name,
-      personality,
-      photo
+      name
     }
   );
   // If something went wrong, return an error

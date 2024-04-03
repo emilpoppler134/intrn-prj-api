@@ -32,12 +32,12 @@ const schema = new Schema<IBot>(
     files: [
       {
         type: String,
-        required: true
+        required: false
       }
     ],
     timestamp: {
       type: Date,
-      required: true,
+      required: false,
       default: () => {
         const date = new Date();
         date.setHours(date.getHours() + 1); // So the time is in UTC +1 (sweden time)
