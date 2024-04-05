@@ -181,11 +181,11 @@ async function find(req: Request, res: Response) {
       id: subscription.id,
       name: product.name,
       price: subscriptionItem.price.unit_amount / 100,
-      current_period_start: new Date(subscription.current_period_start * 1000),
-      current_period_end: new Date(subscription.current_period_end * 1000),
+      current_period_start: subscription.current_period_start,
+      current_period_end: subscription.current_period_end,
       days_until_due: subscription.days_until_due as number,
       default_payment_method: subscription.default_payment_method as string,
-      created: new Date(subscription.created * 1000)
+      created: subscription.created
     }
 
     res.json(new ValidResponse(subscriptionResponse));
