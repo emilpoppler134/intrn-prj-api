@@ -8,5 +8,6 @@ router.post("/create-payment-intent", authorization, subscriptionController.crea
 router.post("/find", authorization, subscriptionController.find);
 router.post("/confirm", authorization, subscriptionController.confirm);
 router.post("/cancel", authorization, subscriptionController.cancel);
+router.post("/pay", authorization, subscriptionController.pay);
 
 export default router;

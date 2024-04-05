@@ -11,7 +11,7 @@ type IUser = {
 }
 
 type Subscription = {
-  status: "active" | "past-due" | null;
+  status: "active" | "past_due" | null;
   subscription_id: string | null;
 }
 
@@ -33,7 +33,7 @@ const schema = new Schema<IUser>(
       status: {
         type: String,
         required: false,
-        enum: ["active", "past-due"],
+        enum: ["active", "past_due"],
         default: () => null
       },
       subscription_id: {

@@ -27,7 +27,7 @@ async function createPaymentIntent(req: Request, res: Response) {
     });
 
     // If user has a subscription that is active or unpaid, return error
-    if (subscriptions.data.some(item => ["active", "past-due"].includes(item.status))) {
+    if (subscriptions.data.some(item => ["active", "past_due"].includes(item.status))) {
       res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
       return;
     }
@@ -151,8 +151,8 @@ async function find(req: Request, res: Response) {
       return;
     }
 
-    // If subscription status isn't active or past-due, return no result
-    if (!["active", "past-due"].includes(subscription.status)) {
+    // If subscription status isn't active or past_due, return no result
+    if (!["active", "past_due"].includes(subscription.status)) {
       res.json(new ErrorResponse(ErrorType.NO_RESULT));
       return;
     }
@@ -181,6 +181,8 @@ async function find(req: Request, res: Response) {
       id: subscription.id,
       name: product.name,
       price: subscriptionItem.price.unit_amount / 100,
+      status: subscription.status as string,
+      latest_invoice: subscription.latest_invoice as string,
       current_period_start: subscription.current_period_start,
       current_period_end: subscription.current_period_end,
       days_until_due: subscription.days_until_due as number,
@@ -265,4 +267,56 @@ async function cancel(req: Request, res: Response) {
   }
 }
 
-export default { createPaymentIntent, find, confirm, cancel }
+async function pay(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: ParamValue = req.body.id;
+
+  // Check if all required values is defined
+  if (id === undefined) {
+    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
+    return;
+  }
+
+  try {
+    // Fetch the subscription from stripe API be id
+    const subscription = await stripe.subscriptions.retrieve(id);
+
+    // If subscription customer isn't user, return no result
+    if (subscription.customer !== user.customer_id) {
+      res.json(new ErrorResponse(ErrorType.NO_RESULT));
+      return;
+    }
+
+    // If subscription isn't past_due, return error
+    if (subscription.status !== "past_due") {
+      res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
+      return;
+    }
+
+    if (subscription.latest_invoice === null) {
+      res.json(new ErrorResponse(ErrorType.NO_RESULT));
+      return;
+    }
+
+    const paymentIntent = await stripe.invoices.pay(subscription.latest_invoice as string);
+
+    if (paymentIntent.status !== "paid") {
+      throw new Error();
+    }
+
+    // Update the database so user gets the subscription status and id
+    await User.updateOne(
+      { _id: user._id },
+      { subscription: { status: "active", subscription_id: subscription.id }}
+    );
+
+    res.json(new ValidResponse());
+  } catch (error) {
+    if (error instanceof Stripe.errors.StripeError) {
+      res.status(400).send({ error: { message: error.message } });
+      return;
+    }
+  }
+}
+
+export default { createPaymentIntent, find, confirm, cancel, pay }
