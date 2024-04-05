@@ -1,23 +1,26 @@
-import { Request, Response } from 'express';
-import { DeleteResult, UpdateResult } from 'mongodb';
-import jwt from 'jsonwebtoken';
-import Stripe from 'stripe';
-
-import { ACCESS_TOKEN_SECRET, STRIPE_SECRET_KEY } from '../config.js';
-import { User } from '../models/User.js';
-import { VerificationToken } from '../models/VerificationToken.js';
-import { hashPassword } from '../lib/hashPassword.js';
-import { VerificationType, sendVerificationToken } from '../lib/transmitMail.js';
-import { ValidResponse, ErrorResponse } from '../lib/response.js';
-import { ErrorType } from '../types/Error.js';
-import { ParamValue } from '../types/ParamValue.js';
-import { TokenPayload } from '../types/TokenPayload.js';
+import { Request, Response } from "express";
+import jwt from "jsonwebtoken";
+import { DeleteResult, UpdateResult } from "mongodb";
+import Stripe from "stripe";
+import { ACCESS_TOKEN_SECRET, STRIPE_SECRET_KEY } from "../config.js";
+import { hashPassword } from "../lib/hashPassword.js";
+import { ErrorResponse, ValidResponse } from "../lib/response.js";
+import {
+  VerificationType,
+  sendVerificationToken,
+} from "../lib/transmitMail.js";
+import { User } from "../models/User.js";
+import { VerificationToken } from "../models/VerificationToken.js";
+import { ErrorType } from "../types/Error.js";
+import { ParamValue } from "../types/ParamValue.js";
+import { TokenPayload } from "../types/TokenPayload.js";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
 async function validateToken(req: Request, res: Response) {
-  const authorizationHeader = req.headers['authorization'];
-  const token = authorizationHeader && authorizationHeader.replace(/^Bearer\s/, '');
+  const authorizationHeader = req.headers["authorization"];
+  const token =
+    authorizationHeader && authorizationHeader.replace(/^Bearer\s/, "");
 
   // Check if token is defined in authorization headers
   if (token === undefined) {
@@ -27,7 +30,7 @@ async function validateToken(req: Request, res: Response) {
   try {
     // Verify JWT token
     const tokenPayload = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
-    // If all good, return token payload 
+    // If all good, return token payload
     res.json(new ValidResponse(tokenPayload));
   } catch {
     return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
@@ -38,11 +41,9 @@ async function signNewToken(req: Request, res: Response) {
   const user: TokenPayload = res.locals.user;
 
   // Look for the user in the database by id
-  const findUser = await User.findOne(
-    {
-      _id: user._id
-    }
-  );
+  const findUser = await User.findOne({
+    _id: user._id,
+  });
 
   // If no result, return an error
   if (findUser === null) {
@@ -50,7 +51,13 @@ async function signNewToken(req: Request, res: Response) {
     return;
   }
 
-  const payload = (({ _id, name, email, subscription, customer_id }) => ({ _id, name, email, subscription, customer_id }))(findUser);
+  const payload = (({ _id, name, email, subscription, customer_id }) => ({
+    _id,
+    name,
+    email,
+    subscription,
+    customer_id,
+  }))(findUser);
 
   try {
     // Sign a JWT token with user information
@@ -72,7 +79,7 @@ async function login(req: Request, res: Response) {
     return;
   }
 
-  // Hash the password 
+  // Hash the password
   const passwordHash = hashPassword(password);
   if (passwordHash === null) {
     res.json(new ErrorResponse(ErrorType.HASH_PARSING));
@@ -80,12 +87,10 @@ async function login(req: Request, res: Response) {
   }
 
   // Look for the user in the database by email and password
-  const findUser = await User.findOne(
-    {
-      email: email,
-      password_hash: passwordHash
-    }
-  );
+  const findUser = await User.findOne({
+    email: email,
+    password_hash: passwordHash,
+  });
 
   // If no result, return an error
   if (findUser === null) {
@@ -93,7 +98,13 @@ async function login(req: Request, res: Response) {
     return;
   }
 
-  const payload = (({ _id, name, email, subscription, customer_id }) => ({ _id, name, email, subscription, customer_id }))(findUser);
+  const payload = (({ _id, name, email, subscription, customer_id }) => ({
+    _id,
+    name,
+    email,
+    subscription,
+    customer_id,
+  }))(findUser);
 
   try {
     // Sign a JWT token with user information
@@ -116,11 +127,9 @@ async function signupRequest(req: Request, res: Response) {
   }
 
   // Look if the email is available
-  const findUser = await User.findOne(
-    {
-      email: email
-    }
-  );
+  const findUser = await User.findOne({
+    email: email,
+  });
   // If user with that email already exists, return error
   if (findUser !== null) {
     res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
@@ -128,12 +137,11 @@ async function signupRequest(req: Request, res: Response) {
   }
 
   // Delete all verification tokens in database that has provided email and that isn't consumed
-  const deleteVerificationToken: DeleteResult = await VerificationToken.deleteMany(
-    {
+  const deleteVerificationToken: DeleteResult =
+    await VerificationToken.deleteMany({
       email,
-      consumed: false
-    }
-  );
+      consumed: false,
+    });
   // If something went wrong, return an error
   if (deleteVerificationToken.acknowledged === false) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
@@ -144,12 +152,10 @@ async function signupRequest(req: Request, res: Response) {
   const code = Math.floor(100000 + Math.random() * 900000);
 
   // Create a new verification token in the database
-  const createVerificationToken = await VerificationToken.create(
-    {
-      code: code,
-      email: email
-    }
-  );
+  const createVerificationToken = await VerificationToken.create({
+    code: code,
+    email: email,
+  });
   // If something went wrong, return an error
   if (createVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
@@ -180,19 +186,17 @@ async function signupConfirmation(req: Request, res: Response) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
   }
-  
-  // Look for a verification token in the database 
+
+  // Look for a verification token in the database
   // By email, verification code and if the token isn't already consumed
-  const findVerificationToken = await VerificationToken.findOne(
-    {
-      email,
-      code: parseInt(code),
-      consumed: false,
-      expiry_date: {
-        $gte: date
-      }
-    }
-  );
+  const findVerificationToken = await VerificationToken.findOne({
+    email,
+    code: parseInt(code),
+    consumed: false,
+    expiry_date: {
+      $gte: date,
+    },
+  });
   // If there is no result, return error
   if (findVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -210,35 +214,36 @@ async function signupSubmit(req: Request, res: Response) {
   const password: ParamValue = req.body.password;
 
   // Check if all required values is defined
-  if (name === undefined || email === undefined || code === undefined || password === undefined) {
+  if (
+    name === undefined ||
+    email === undefined ||
+    code === undefined ||
+    password === undefined
+  ) {
     res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
     return;
   }
 
   // Look if the email is available
-  const findUser = await User.findOne(
-    {
-      email: email
-    }
-  );
+  const findUser = await User.findOne({
+    email: email,
+  });
   // If user with that email already exists, return error
   if (findUser !== null) {
     res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
     return;
   }
 
-  // Look for a verification token in the database 
+  // Look for a verification token in the database
   // By email, verification code and if the token isn't already consumed
-  const findVerificationToken = await VerificationToken.findOne(
-    {
-      email,
-      code: parseInt(code),
-      consumed: false,
-      expiry_date: {
-        $gte: new Date()
-      }
-    }
-  );
+  const findVerificationToken = await VerificationToken.findOne({
+    email,
+    code: parseInt(code),
+    consumed: false,
+    expiry_date: {
+      $gte: new Date(),
+    },
+  });
   // If there is no result, return error
   if (findVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -253,16 +258,17 @@ async function signupSubmit(req: Request, res: Response) {
   }
 
   // Create a customer in stripe and receive its id
-  const customerId = await (
-    async(name: string, email: string): Promise<string | null> => {
-      try {
-        const customer = await stripe.customers.create({ name, email });
-        return customer.id
-      } catch {
-        return null;
-      }
+  const customerId = await (async (
+    name: string,
+    email: string,
+  ): Promise<string | null> => {
+    try {
+      const customer = await stripe.customers.create({ name, email });
+      return customer.id;
+    } catch {
+      return null;
     }
-  )(name, email);
+  })(name, email);
 
   if (customerId === null) {
     res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
@@ -270,14 +276,12 @@ async function signupSubmit(req: Request, res: Response) {
   }
 
   // Create a new user in the database
-  const createUser = await User.create(
-    {
-      name: name,
-      email: email,
-      password_hash: passwordHash,
-      customer_id: customerId
-    }
-  );
+  const createUser = await User.create({
+    name: name,
+    email: email,
+    password_hash: passwordHash,
+    customer_id: customerId,
+  });
   // If something went wrong, return an error
   if (createUser === null) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
@@ -285,17 +289,24 @@ async function signupSubmit(req: Request, res: Response) {
   }
 
   // Update the verification token to consumed
-  const updateVerificationToken: UpdateResult = await VerificationToken.updateOne(
-    { _id: findVerificationToken._id },
-    { consumed: true }
-  );
+  const updateVerificationToken: UpdateResult =
+    await VerificationToken.updateOne(
+      { _id: findVerificationToken._id },
+      { consumed: true },
+    );
   // If something went wrong, return an error
   if (updateVerificationToken.acknowledged === false) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
     return;
   }
 
-  const payload = (({ _id, name, email, subscription, customer_id }) => ({ _id, name, email, subscription, customer_id }))(createUser);
+  const payload = (({ _id, name, email, subscription, customer_id }) => ({
+    _id,
+    name,
+    email,
+    subscription,
+    customer_id,
+  }))(createUser);
 
   try {
     // Sign a JWT token with user information
@@ -304,7 +315,7 @@ async function signupSubmit(req: Request, res: Response) {
     res.json(new ValidResponse({ token }));
   } catch {
     res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
-  }  
+  }
 }
 
 async function forgotPasswordRequest(req: Request, res: Response) {
@@ -317,11 +328,9 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   }
 
   // Look for the user in the database by email
-  const findUser = await User.findOne(
-    {
-      email: email
-    }
-  );
+  const findUser = await User.findOne({
+    email: email,
+  });
   // If there is no user with that email, return error
   if (findUser === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -332,13 +341,11 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   const code = Math.floor(100000 + Math.random() * 900000);
 
   // Create a new verification token in the database
-  const createVerificationToken = await VerificationToken.create(
-    {
-      code: code,
-      email: email,
-      user: findUser._id
-    }
-  );
+  const createVerificationToken = await VerificationToken.create({
+    code: code,
+    email: email,
+    user: findUser._id,
+  });
   // If something went wrong, return an error
   if (createVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
@@ -347,7 +354,12 @@ async function forgotPasswordRequest(req: Request, res: Response) {
 
   // Send an email to the user with the verification code
   try {
-    await sendVerificationToken(VerificationType.ForgotPassword, findUser.name, findUser.email, code);
+    await sendVerificationToken(
+      VerificationType.ForgotPassword,
+      findUser.name,
+      findUser.email,
+      code,
+    );
   } catch {
     res.json(new ErrorResponse(ErrorType.MAIL_ERROR));
     return;
@@ -371,29 +383,25 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   }
 
   // Look for the user in the database by email
-  const findUser = await User.findOne(
-    {
-      email: email
-    }
-  );
+  const findUser = await User.findOne({
+    email: email,
+  });
   // If there is no user with that email, return error
   if (findUser === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
     return;
   }
-  
+
   // Look for a verification token in the database
   // By user id, verification code and if the token isn't already consumed
-  const findVerificationToken = await VerificationToken.findOne(
-    {
-      user: findUser._id,
-      code: parseInt(code),
-      consumed: false,
-      expiry_date: {
-        $gte: date
-      }
-    }
-  );
+  const findVerificationToken = await VerificationToken.findOne({
+    user: findUser._id,
+    code: parseInt(code),
+    consumed: false,
+    expiry_date: {
+      $gte: date,
+    },
+  });
   // If there is no result, return error
   if (findVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -419,11 +427,9 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   }
 
   // Look for the user in the database by email
-  const findUser = await User.findOne(
-    {
-      email: email
-    }
-  );
+  const findUser = await User.findOne({
+    email: email,
+  });
   // If there is no user with that email, return error
   if (findUser === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -432,16 +438,14 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
 
   // Look for a verification token in the database
   // By user id, verification code and if the token isn't already consumed
-  const findVerificationToken = await VerificationToken.findOne(
-    {
-      user: findUser._id,
-      code: parseInt(code),
-      consumed: false,
-      expiry_date: {
-        $gte: date
-      }
-    }
-  );
+  const findVerificationToken = await VerificationToken.findOne({
+    user: findUser._id,
+    code: parseInt(code),
+    consumed: false,
+    expiry_date: {
+      $gte: date,
+    },
+  });
   // If there is no result, return error
   if (findVerificationToken === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -458,7 +462,7 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   // Update the user password in the database
   const updateUser: UpdateResult = await User.updateOne(
     { _id: findUser._id },
-    { password_hash: passwordHash }
+    { password_hash: passwordHash },
   );
   // If something went wrong, return an error
   if (updateUser.acknowledged === false) {
@@ -467,10 +471,11 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   }
 
   // Update the verification token to consumed
-  const updateVerificationToken: UpdateResult = await VerificationToken.updateOne(
-    { _id: findVerificationToken._id },
-    { consumed: true }
-  );
+  const updateVerificationToken: UpdateResult =
+    await VerificationToken.updateOne(
+      { _id: findVerificationToken._id },
+      { consumed: true },
+    );
   // If something went wrong, return an error
   if (updateVerificationToken.acknowledged === false) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
@@ -481,4 +486,14 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-export default { validateToken, signNewToken, login, signupRequest, signupConfirmation, signupSubmit, forgotPasswordRequest, forgotPasswordConfirmation, forgotPasswordSubmit }
+export default {
+  validateToken,
+  signNewToken,
+  login,
+  signupRequest,
+  signupConfirmation,
+  signupSubmit,
+  forgotPasswordRequest,
+  forgotPasswordConfirmation,
+  forgotPasswordSubmit,
+};

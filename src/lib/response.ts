@@ -2,13 +2,13 @@ import { ErrorType } from "../types/Error";
 
 enum ResponseStatus {
   OK = "OK",
-  ERROR = "ERROR"
+  ERROR = "ERROR",
 }
 
 export class ValidResponse {
   status: ResponseStatus;
   data?: any;
-  
+
   constructor(data?: any) {
     this.status = ResponseStatus.OK;
 
@@ -21,7 +21,7 @@ export class ValidResponse {
 export class ErrorResponse {
   status: ResponseStatus;
   error: ErrorType;
-  
+
   constructor(error: ErrorType) {
     this.status = ResponseStatus.ERROR;
     this.error = error;

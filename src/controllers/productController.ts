@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
-import Stripe from 'stripe';
-
+import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "../config.js";
 import { ErrorResponse, ValidResponse } from "../lib/response.js";
 import { ErrorType } from "../types/Error.js";
@@ -17,7 +16,7 @@ async function list(req: Request, res: Response) {
     // Fetch all active products from stripe
     const products = await stripe.products.list({
       active: true,
-      expand: ['data.default_price']
+      expand: ["data.default_price"],
     });
 
     // If one of the products dont have a price, return error
@@ -31,15 +30,15 @@ async function list(req: Request, res: Response) {
     }
 
     // Map the products
-    const productResponse = products.data.map(item => {
+    const productResponse = products.data.map((item) => {
       const product = item as ProductExpanded;
       const price = product.default_price.unit_amount as number;
 
-      return {  
+      return {
         id: item.id,
         name: item.name,
-        price: price / 100
-      }
+        price: price / 100,
+      };
     });
 
     // Return products
@@ -61,12 +60,9 @@ async function find(req: Request, res: Response) {
 
   try {
     // Fetch the product from stripe by id
-    const product = await stripe.products.retrieve(
-      id,
-      {
-        expand: ['default_price']
-      }
-    ) as ProductExpanded;
+    const product = (await stripe.products.retrieve(id, {
+      expand: ["default_price"],
+    })) as ProductExpanded;
 
     // if product is not active, return no result
     if (product.active !== true) {
@@ -84,8 +80,8 @@ async function find(req: Request, res: Response) {
     const productResponse = {
       id: product.id,
       name: product.name,
-      price: price / 100
-    }
+      price: price / 100,
+    };
 
     // Return product
     res.json(new ValidResponse(productResponse));
@@ -95,4 +91,4 @@ async function find(req: Request, res: Response) {
   }
 }
 
-export default { list, find }
+export default { list, find };

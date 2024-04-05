@@ -1,17 +1,16 @@
 import { Request, Response } from "express";
-import Stripe from 'stripe';
-
+import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "../config.js";
 import { ErrorResponse, ValidResponse } from "../lib/response.js";
+import { User } from "../models/User.js";
 import { ErrorType } from "../types/Error.js";
 import { ParamValue } from "../types/ParamValue.js";
 import { TokenPayload } from "../types/TokenPayload.js";
-import { User } from "../models/User.js";
 
 type SubscriptionExpanded = Stripe.Subscription & {
   latest_invoice: {
-    payment_intent: Stripe.PaymentIntent
-  }
+    payment_intent: Stripe.PaymentIntent;
+  };
 };
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -27,7 +26,11 @@ async function createPaymentIntent(req: Request, res: Response) {
     });
 
     // If user has a subscription that is active or unpaid, return error
-    if (subscriptions.data.some(item => ["active", "past_due"].includes(item.status))) {
+    if (
+      subscriptions.data.some((item) =>
+        ["active", "past_due"].includes(item.status),
+      )
+    ) {
       res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
       return;
     }
@@ -43,15 +46,15 @@ async function createPaymentIntent(req: Request, res: Response) {
   }
 
   // Fetch product from stripe API
-  const product = await (
-    async (productId: string): Promise<Stripe.Product | null> => {
-      try {
-        return await stripe.products.retrieve(productId);
-      } catch {
-        return null;
-      }
+  const product = await (async (
+    productId: string,
+  ): Promise<Stripe.Product | null> => {
+    try {
+      return await stripe.products.retrieve(productId);
+    } catch {
+      return null;
     }
-  )(id);
+  })(id);
 
   if (product === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -59,22 +62,20 @@ async function createPaymentIntent(req: Request, res: Response) {
   }
 
   // Fetch price from stripe API
-  const priceId = await (
-    async(productId: string): Promise<string | null> => {
-      try {
-        const stripeProduct = await stripe.products.retrieve(productId);
-        const priceId = stripeProduct.default_price;
-    
-        if (typeof priceId !== "string") {
-          throw new Error();
-        }
-    
-        return priceId;
-      } catch {
-        return null;
+  const priceId = await (async (productId: string): Promise<string | null> => {
+    try {
+      const stripeProduct = await stripe.products.retrieve(productId);
+      const priceId = stripeProduct.default_price;
+
+      if (typeof priceId !== "string") {
+        throw new Error();
       }
+
+      return priceId;
+    } catch {
+      return null;
     }
-  )(product.id);
+  })(product.id);
 
   if (priceId === null) {
     res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
@@ -85,17 +86,21 @@ async function createPaymentIntent(req: Request, res: Response) {
   try {
     const subscriptions = await stripe.subscriptions.list({
       customer: user.customer_id,
-      expand: ['data.latest_invoice.payment_intent']
+      expand: ["data.latest_invoice.payment_intent"],
     });
 
     for (let i = 0; i < subscriptions.data.length; i++) {
       const subscription = subscriptions.data[i] as SubscriptionExpanded;
 
-      if (!subscription.items.data.some(item => item.price.id === priceId) && subscription.status === "incomplete") {
+      if (
+        !subscription.items.data.some((item) => item.price.id === priceId) &&
+        subscription.status === "incomplete"
+      ) {
         const subscriptionResponse = {
           productId: id,
-          clientSecret: subscription.latest_invoice.payment_intent.client_secret,
-        }
+          clientSecret:
+            subscription.latest_invoice.payment_intent.client_secret,
+        };
         res.json(new ValidResponse(subscriptionResponse));
         return;
       }
@@ -107,20 +112,22 @@ async function createPaymentIntent(req: Request, res: Response) {
 
   // Create a new subscription
   try {
-    const subscription = await stripe.subscriptions.create({
+    const subscription = (await stripe.subscriptions.create({
       customer: user.customer_id,
-      items: [{
-        price: priceId,
-      }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: { save_default_payment_method: 'on_subscription' },
-      expand: ['latest_invoice.payment_intent'],
-    }) as SubscriptionExpanded;
+      items: [
+        {
+          price: priceId,
+        },
+      ],
+      payment_behavior: "default_incomplete",
+      payment_settings: { save_default_payment_method: "on_subscription" },
+      expand: ["latest_invoice.payment_intent"],
+    })) as SubscriptionExpanded;
 
     const subscriptionResponse = {
       productId: id,
       clientSecret: subscription.latest_invoice.payment_intent.client_secret,
-    }
+    };
 
     res.json(new ValidResponse(subscriptionResponse));
   } catch (error) {
@@ -158,7 +165,9 @@ async function find(req: Request, res: Response) {
     }
 
     // Find the subscription item that is active
-    const subscriptionItem = subscription.items.data.find(item => item.price.active === true);
+    const subscriptionItem = subscription.items.data.find(
+      (item) => item.price.active === true,
+    );
 
     if (subscriptionItem === undefined) {
       res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
@@ -187,8 +196,8 @@ async function find(req: Request, res: Response) {
       current_period_end: subscription.current_period_end,
       days_until_due: subscription.days_until_due as number,
       default_payment_method: subscription.default_payment_method as string,
-      created: subscription.created
-    }
+      created: subscription.created,
+    };
 
     res.json(new ValidResponse(subscriptionResponse));
   } catch {
@@ -206,7 +215,9 @@ async function confirm(req: Request, res: Response) {
     });
 
     // Find the active one
-    const activeSubscription = subscriptions.data.find(item => item.status === "active");
+    const activeSubscription = subscriptions.data.find(
+      (item) => item.status === "active",
+    );
 
     if (activeSubscription === undefined) {
       res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -216,7 +227,12 @@ async function confirm(req: Request, res: Response) {
     // Update the database so user gets the subscription status and id
     await User.updateOne(
       { _id: user._id },
-      { subscription: { status: "active", subscription_id: activeSubscription.id }}
+      {
+        subscription: {
+          status: "active",
+          subscription_id: activeSubscription.id,
+        },
+      },
     );
 
     res.json(new ValidResponse());
@@ -257,7 +273,7 @@ async function cancel(req: Request, res: Response) {
     // Update the database so user gets the subscription status and id
     await User.updateOne(
       { _id: user._id },
-      { subscription: { status: null, subscription_id: null }}
+      { subscription: { status: null, subscription_id: null } },
     );
 
     res.json(new ValidResponse());
@@ -298,7 +314,9 @@ async function pay(req: Request, res: Response) {
       return;
     }
 
-    const paymentIntent = await stripe.invoices.pay(subscription.latest_invoice as string);
+    const paymentIntent = await stripe.invoices.pay(
+      subscription.latest_invoice as string,
+    );
 
     if (paymentIntent.status !== "paid") {
       throw new Error();
@@ -307,7 +325,7 @@ async function pay(req: Request, res: Response) {
     // Update the database so user gets the subscription status and id
     await User.updateOne(
       { _id: user._id },
-      { subscription: { status: "active", subscription_id: subscription.id }}
+      { subscription: { status: "active", subscription_id: subscription.id } },
     );
 
     res.json(new ValidResponse());
@@ -319,4 +337,4 @@ async function pay(req: Request, res: Response) {
   }
 }
 
-export default { createPaymentIntent, find, confirm, cancel, pay }
+export default { createPaymentIntent, find, confirm, cancel, pay };

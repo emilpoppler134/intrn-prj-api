@@ -1,17 +1,32 @@
-import { createTransport } from 'nodemailer';
-import { google } from 'googleapis';
-import SMTPTransport from 'nodemailer/lib/smtp-transport';
-import { API_ADDRESS, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, GOOGLE_REDIRECT_URI } from '../config.js';
+import { createTransport } from "nodemailer";
+import { google } from "googleapis";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
+import {
+  API_ADDRESS,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  GOOGLE_REFRESH_TOKEN,
+  GOOGLE_REDIRECT_URI,
+} from "../config.js";
 
 export enum VerificationType {
   Signup,
-  ForgotPassword
+  ForgotPassword,
 }
 
-const oAuth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+const oAuth2Client = new google.auth.OAuth2(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  GOOGLE_REDIRECT_URI,
+);
 oAuth2Client.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
 
-export async function sendVerificationToken(verificationType: VerificationType, name: string, email: string, code: number) {
+export async function sendVerificationToken(
+  verificationType: VerificationType,
+  name: string,
+  email: string,
+  code: number,
+) {
   const accessToken = await oAuth2Client.getAccessToken();
 
   const transport = createTransport({
@@ -19,16 +34,21 @@ export async function sendVerificationToken(verificationType: VerificationType, 
     port: 465,
     secure: true,
     auth: {
-      type: 'OAuth2',
-      user: 'emil.poppler@gmail.com',
+      type: "OAuth2",
+      user: "emil.poppler@gmail.com",
       clientId: GOOGLE_CLIENT_ID,
       clientSecret: GOOGLE_CLIENT_SECRET,
       refreshToken: GOOGLE_REFRESH_TOKEN,
-      accessToken: accessToken
-    }
+      accessToken: accessToken,
+    },
   } as SMTPTransport.Options);
 
-  const mailOptions = createVerificationTokenMail(verificationType, name, email, code);
+  const mailOptions = createVerificationTokenMail(
+    verificationType,
+    name,
+    email,
+    code,
+  );
 
   try {
     await transport.sendMail(mailOptions);
@@ -37,11 +57,16 @@ export async function sendVerificationToken(verificationType: VerificationType, 
   }
 }
 
-function createVerificationTokenMail(verificationType: VerificationType, name: string, email: string, code: number) {
+function createVerificationTokenMail(
+  verificationType: VerificationType,
+  name: string,
+  email: string,
+  code: number,
+) {
   switch (verificationType) {
     case VerificationType.Signup: {
       return {
-        from: 'Netlight <emil.poppler@gmail.com>',
+        from: "Netlight <emil.poppler@gmail.com>",
         to: email,
         subject: "Signup verification",
         html: `
@@ -68,13 +93,13 @@ function createVerificationTokenMail(verificationType: VerificationType, name: s
             </div>
             <div style="display:block; height: 64px; width: 100%;"></div>
           </div>
-        `
+        `,
       };
     }
 
     case VerificationType.ForgotPassword: {
       return {
-        from: 'Netlight <emil.poppler@gmail.com>',
+        from: "Netlight <emil.poppler@gmail.com>",
         to: email,
         subject: "Forgot Password",
         html: `
@@ -101,7 +126,7 @@ function createVerificationTokenMail(verificationType: VerificationType, name: s
             </div>
             <div style="display:block; height: 64px; width: 100%;"></div>
           </div>
-        `
+        `,
       };
     }
   }

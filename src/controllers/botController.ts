@@ -1,11 +1,10 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
-
-import { Bot } from '../models/Bot.js';
 import { ErrorResponse, ValidResponse } from "../lib/response.js";
-import { TokenPayload } from "../types/TokenPayload.js";
+import { Bot } from "../models/Bot.js";
 import { ErrorType } from "../types/Error.js";
 import { ParamValue } from "../types/ParamValue.js";
+import { TokenPayload } from "../types/TokenPayload.js";
 
 async function find(req: Request, res: Response) {
   const user: TokenPayload = res.locals.user;
@@ -18,19 +17,24 @@ async function find(req: Request, res: Response) {
   }
 
   // Look for the bot in the database by Id and userId
-  const findBot = await Bot.findOne(
-    {
-      user: user._id,
-      _id: id
-    }
-  );
+  const findBot = await Bot.findOne({
+    user: user._id,
+    _id: id,
+  });
   // If no result, return error
   if (findBot === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
     return;
   }
 
-  const botResponse = (({ _id, name, personality, photo, files, timestamp }) => ({ _id, name, personality, photo, files, timestamp }))(findBot);
+  const botResponse = (({
+    _id,
+    name,
+    personality,
+    photo,
+    files,
+    timestamp,
+  }) => ({ _id, name, personality, photo, files, timestamp }))(findBot);
   res.json(new ValidResponse(botResponse));
 }
 
@@ -38,18 +42,25 @@ async function list(req: Request, res: Response) {
   const user: TokenPayload = res.locals.user;
 
   // Look for the bot in the database by userId
-  const listBots = await Bot.find(
-    {
-      user: user._id
-    }
-  );
+  const listBots = await Bot.find({
+    user: user._id,
+  });
   // If no result, return error
   if (listBots === null) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
     return;
   }
 
-  const botResponse = listBots.map(item => (({ _id, name, personality, photo, files, timestamp }) => ({ _id, name, personality, photo, files, timestamp }))(item));
+  const botResponse = listBots.map((item) =>
+    (({ _id, name, personality, photo, files, timestamp }) => ({
+      _id,
+      name,
+      personality,
+      photo,
+      files,
+      timestamp,
+    }))(item),
+  );
   res.json(new ValidResponse(botResponse));
 }
 
@@ -64,12 +75,10 @@ async function create(req: Request, res: Response) {
   }
 
   // Look if the name is available
-  const findBot = await Bot.findOne(
-    {
-      user: user._id,
-      name: { $regex: new RegExp("^" + name.toLowerCase(), "i") }
-    }
-  );
+  const findBot = await Bot.findOne({
+    user: user._id,
+    name: { $regex: new RegExp("^" + name.toLowerCase(), "i") },
+  });
   // If bot with that name already exists, return error
   if (findBot !== null) {
     res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
@@ -77,12 +86,10 @@ async function create(req: Request, res: Response) {
   }
 
   // Create a new bot in the database
-  const createBot = await Bot.create(
-    {
-      user: user._id,
-      name
-    }
-  );
+  const createBot = await Bot.create({
+    user: user._id,
+    name,
+  });
   // If something went wrong, return an error
   if (createBot === null) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
@@ -104,12 +111,10 @@ async function remove(req: Request, res: Response) {
   }
 
   // Look for the bot in the database by Id and userId
-  const findBot = await Bot.findOne(
-    {
-      user: user._id,
-      _id: id
-    }
-  );
+  const findBot = await Bot.findOne({
+    user: user._id,
+    _id: id,
+  });
   // If no result, return error
   if (findBot === null) {
     res.json(new ErrorResponse(ErrorType.NO_RESULT));
@@ -117,12 +122,10 @@ async function remove(req: Request, res: Response) {
   }
 
   // Delete the bot from the database by id and userId
-  const deleteBot = await Bot.deleteOne(
-    {
-      user: user._id,
-      _id: id
-    }
-  );
+  const deleteBot = await Bot.deleteOne({
+    user: user._id,
+    _id: id,
+  });
   // If something went wrong, return an error
   if (deleteBot.acknowledged === false) {
     res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
@@ -133,4 +136,4 @@ async function remove(req: Request, res: Response) {
   res.json(new ValidResponse());
 }
 
-export default { find, list, create, remove }
+export default { find, list, create, remove };
