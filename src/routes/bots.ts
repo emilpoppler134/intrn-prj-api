@@ -1,28 +1,29 @@
 import express from "express";
 import botController from "../controllers/botController.js";
+import { asyncHandler } from "../handlers/asyncHandler.js";
 import authorization from "../middleware/authorization.js";
 import subscriptionAuthorization from "../middleware/subscriptionAuthorization.js";
 
 const router = express.Router();
 
-router.post("/list", authorization, botController.list);
+router.post("/list", authorization, asyncHandler(botController.list));
 router.post(
   "/find",
   authorization,
   subscriptionAuthorization,
-  botController.find,
+  asyncHandler(botController.find)
 );
 router.post(
   "/create",
   authorization,
   subscriptionAuthorization,
-  botController.create,
+  asyncHandler(botController.create)
 );
 router.post(
   "/remove",
   authorization,
   subscriptionAuthorization,
-  botController.remove,
+  asyncHandler(botController.remove)
 );
 
 export default router;

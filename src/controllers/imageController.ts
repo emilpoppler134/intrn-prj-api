@@ -7,6 +7,8 @@ import {
   S3_REGION,
   S3_SECRET_ACCESS_KEY,
 } from "../config.js";
+import { ErrorCode } from "../types/StatusCode.js";
+import { ErrorResponse } from "../utils/sendResponse.js";
 
 const client = new S3Client({
   region: S3_REGION,
@@ -49,8 +51,7 @@ async function find(req: Request, res: Response) {
   let document = await getDocument(key);
 
   if (document === null) {
-    res.json({ status: "ERROR", data: "Error fetching file" });
-    return;
+    throw new ErrorResponse(ErrorCode.SERVER_ERROR, "Error fetching file.");
   }
 
   res.write(document);

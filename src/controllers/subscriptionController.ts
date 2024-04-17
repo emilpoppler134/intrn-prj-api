@@ -1,16 +1,35 @@
 import { Request, Response } from "express";
+import { UpdateResult } from "mongodb";
 import Stripe from "stripe";
 import { STRIPE_SECRET_KEY } from "../config.js";
-import { ErrorResponse, ValidResponse } from "../lib/response.js";
 import { User } from "../models/User.js";
-import { ErrorType } from "../types/Error.js";
 import { ParamValue } from "../types/ParamValue.js";
+import { ErrorCode, SuccessCode } from "../types/StatusCode.js";
 import { TokenPayload } from "../types/TokenPayload.js";
+import { ErrorResponse, sendValidResponse } from "../utils/sendResponse.js";
 
 type SubscriptionExpanded = Stripe.Subscription & {
   latest_invoice: {
     payment_intent: Stripe.PaymentIntent;
   };
+};
+
+type PaymentIntentResponse = {
+  productId: string;
+  clientSecret: string;
+};
+
+type SubscriptionResponse = {
+  id: string;
+  name: string;
+  price: number;
+  status: string;
+  latest_invoice: string;
+  current_period_start: number;
+  current_period_end: number;
+  days_until_due: number;
+  default_payment_method: string;
+  created: number;
 };
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -19,52 +38,59 @@ async function createPaymentIntent(req: Request, res: Response) {
   const user: TokenPayload = res.locals.user;
   const id: ParamValue = req.body.id;
 
-  try {
-    // List all users subscriptions
-    const subscriptions = await stripe.subscriptions.list({
-      customer: user.customer_id,
-    });
+  const subscriptions =
+    await (async (): Promise<Array<Stripe.Subscription> | null> => {
+      try {
+        // List all users subscriptions
+        return (
+          await stripe.subscriptions.list({
+            customer: user.customer_id,
+          })
+        ).data;
+      } catch {
+        return null;
+      }
+    })();
 
-    // If user has a subscription that is active or unpaid, return error
-    if (
-      subscriptions.data.some((item) =>
-        ["active", "past_due"].includes(item.status),
-      )
-    ) {
-      res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
-      return;
-    }
-  } catch {
-    res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-    return;
+  if (subscriptions === null) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when connecting to stripe."
+    );
+  }
+
+  // If user has a subscription that is active or unpaid, return error
+  if (
+    subscriptions.some((item) => ["active", "past_due"].includes(item.status))
+  ) {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "You already have an active subscription. Cancel it to start a new one."
+    );
   }
 
   // Check if all required values is defined
   if (id === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Fetch product from stripe API
-  const product = await (async (
-    productId: string,
-  ): Promise<Stripe.Product | null> => {
+  const product = await (async (): Promise<Stripe.Product | null> => {
     try {
-      return await stripe.products.retrieve(productId);
+      return await stripe.products.retrieve(id);
     } catch {
       return null;
     }
-  })(id);
+  })();
 
   if (product === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(ErrorCode.NO_RESULT, "Couldn't find the product.");
   }
 
   // Fetch price from stripe API
-  const priceId = await (async (productId: string): Promise<string | null> => {
+  const priceId = await (async (): Promise<string | null> => {
     try {
-      const stripeProduct = await stripe.products.retrieve(productId);
+      const stripeProduct = await stripe.products.retrieve(product.id);
       const priceId = stripeProduct.default_price;
 
       if (typeof priceId !== "string") {
@@ -75,11 +101,13 @@ async function createPaymentIntent(req: Request, res: Response) {
     } catch {
       return null;
     }
-  })(product.id);
+  })();
 
   if (priceId === null) {
-    res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when fetching the price."
+    );
   }
 
   // If user has a subscription that is incomplete for the same subscription plan, return that
@@ -93,21 +121,33 @@ async function createPaymentIntent(req: Request, res: Response) {
       const subscription = subscriptions.data[i] as SubscriptionExpanded;
 
       if (
-        !subscription.items.data.some((item) => item.price.id === priceId) &&
+        subscription.items.data.some((item) => item.price.id === priceId) &&
         subscription.status === "incomplete"
       ) {
-        const subscriptionResponse = {
+        const clientSecret =
+          subscription.latest_invoice.payment_intent.client_secret;
+
+        if (clientSecret === null) {
+          throw new Error();
+        }
+
+        const paymentIntent: PaymentIntentResponse = {
           productId: id,
-          clientSecret:
-            subscription.latest_invoice.payment_intent.client_secret,
+          clientSecret,
         };
-        res.json(new ValidResponse(subscriptionResponse));
-        return;
+
+        return sendValidResponse<PaymentIntentResponse>(
+          res,
+          SuccessCode.OK,
+          paymentIntent
+        );
       }
     }
   } catch {
-    res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when fetching your current subscriptions."
+    );
   }
 
   // Create a new subscription
@@ -124,16 +164,31 @@ async function createPaymentIntent(req: Request, res: Response) {
       expand: ["latest_invoice.payment_intent"],
     })) as SubscriptionExpanded;
 
-    const subscriptionResponse = {
+    const clientSecret =
+      subscription.latest_invoice.payment_intent.client_secret;
+
+    if (clientSecret === null) {
+      throw new ErrorResponse(
+        ErrorCode.SERVER_ERROR,
+        "Something went wrong when fetching the client secret of your payment intent."
+      );
+    }
+
+    const paymentIntent: PaymentIntentResponse = {
       productId: id,
-      clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+      clientSecret,
     };
 
-    res.json(new ValidResponse(subscriptionResponse));
+    return sendValidResponse<PaymentIntentResponse>(
+      res,
+      SuccessCode.CREATED,
+      paymentIntent
+    );
   } catch (error) {
+    if (error instanceof ErrorResponse) throw error;
+
     if (error instanceof Stripe.errors.StripeError) {
-      res.status(400).send({ error: { message: error.message } });
-      return;
+      throw new ErrorResponse(ErrorCode.CONFLICT, error.message);
     }
   }
 }
@@ -144,102 +199,133 @@ async function find(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (id === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
-  try {
-    // Fetch subscription from stripe by id
-    const subscription = await stripe.subscriptions.retrieve(id);
-
-    // If subscription customer isn't user, return no result
-    if (subscription.customer !== user.customer_id) {
-      res.json(new ErrorResponse(ErrorType.NO_RESULT));
-      return;
+  // Fetch subscription from stripe by id
+  const subscription = await (async (): Promise<Stripe.Subscription | null> => {
+    try {
+      return await stripe.subscriptions.retrieve(id);
+    } catch {
+      return null;
     }
+  })();
 
-    // If subscription status isn't active or past_due, return no result
-    if (!["active", "past_due"].includes(subscription.status)) {
-      res.json(new ErrorResponse(ErrorType.NO_RESULT));
-      return;
-    }
-
-    // Find the subscription item that is active
-    const subscriptionItem = subscription.items.data.find(
-      (item) => item.price.active === true,
+  // Return error if no result
+  // Or if subscription customer isn't user
+  // Or if subscription status isn't active or past_due
+  if (
+    subscription === null ||
+    subscription.customer !== user.customer_id ||
+    !["active", "past_due"].includes(subscription.status)
+  ) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "You have no subscription with that id."
     );
-
-    if (subscriptionItem === undefined) {
-      res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-      return;
-    }
-
-    // If subscriptionItem don't have a unit amount, return error
-    if (subscriptionItem.price.unit_amount === null) {
-      res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-      return;
-    }
-
-    // Get the productId from subscription item
-    const productId = subscriptionItem.price.product as string;
-    // Fetch product from stripe API by product Id
-    const product = await stripe.products.retrieve(productId);
-
-    // Only return the important data
-    const subscriptionResponse = {
-      id: subscription.id,
-      name: product.name,
-      price: subscriptionItem.price.unit_amount / 100,
-      status: subscription.status as string,
-      latest_invoice: subscription.latest_invoice as string,
-      current_period_start: subscription.current_period_start,
-      current_period_end: subscription.current_period_end,
-      days_until_due: subscription.days_until_due as number,
-      default_payment_method: subscription.default_payment_method as string,
-      created: subscription.created,
-    };
-
-    res.json(new ValidResponse(subscriptionResponse));
-  } catch {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
   }
+
+  // Find the subscription item that is active
+  const subscriptionItem = subscription.items.data.find(
+    (item) => item.price.active === true
+  );
+
+  if (subscriptionItem === undefined) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Your subscription doesn't have a subscription item."
+    );
+  }
+
+  // If subscriptionItem don't have a unit amount, return error
+  if (subscriptionItem.price.unit_amount === null) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Your subscription doesn't have a price."
+    );
+  }
+
+  // Get the productId from subscription item
+  const productId = subscriptionItem.price.product as string;
+  // Fetch product from stripe API by product Id
+  const product = await stripe.products.retrieve(productId);
+
+  // Only return the important data
+  const subscriptionResponse: SubscriptionResponse = {
+    id: subscription.id,
+    name: product.name,
+    price: subscriptionItem.price.unit_amount / 100,
+    status: subscription.status as string,
+    latest_invoice: subscription.latest_invoice as string,
+    current_period_start: subscription.current_period_start,
+    current_period_end: subscription.current_period_end,
+    days_until_due: subscription.days_until_due as number,
+    default_payment_method: subscription.default_payment_method as string,
+    created: subscription.created,
+  };
+
+  return sendValidResponse<SubscriptionResponse>(
+    res,
+    SuccessCode.OK,
+    subscriptionResponse
+  );
 }
 
 async function confirm(req: Request, res: Response) {
   const user: TokenPayload = res.locals.user;
 
-  try {
-    // List all customers subscriptions
-    const subscriptions = await stripe.subscriptions.list({
-      customer: user.customer_id,
-    });
+  // List all customers subscriptions
+  const subscriptions =
+    await (async (): Promise<Array<Stripe.Subscription> | null> => {
+      try {
+        return (
+          await stripe.subscriptions.list({
+            customer: user.customer_id,
+          })
+        ).data;
+      } catch {
+        return null;
+      }
+    })();
 
-    // Find the active one
-    const activeSubscription = subscriptions.data.find(
-      (item) => item.status === "active",
+  if (subscriptions === null) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when connecting to stripe."
     );
-
-    if (activeSubscription === undefined) {
-      res.json(new ErrorResponse(ErrorType.NO_RESULT));
-      return;
-    }
-
-    // Update the database so user gets the subscription status and id
-    await User.updateOne(
-      { _id: user._id },
-      {
-        subscription: {
-          status: "active",
-          subscription_id: activeSubscription.id,
-        },
-      },
-    );
-
-    res.json(new ValidResponse());
-  } catch {
-    res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-    return;
   }
+
+  // Find the active one
+  const activeSubscription = subscriptions.find(
+    (item) => item.status === "active"
+  );
+
+  if (activeSubscription === undefined) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "Your subscription isn't active."
+    );
+  }
+
+  // Update the database so user gets the subscription status and id
+  const updateUser: UpdateResult = await User.updateOne(
+    { _id: user._id },
+    {
+      subscription: {
+        status: "active",
+        subscription_id: activeSubscription.id,
+      },
+    }
+  );
+  // If something went wrong, return an error
+  if (updateUser.acknowledged === false) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when updating the subscription."
+    );
+  }
+
+  return sendValidResponse(res, SuccessCode.NO_CONTENT);
 }
 
 async function cancel(req: Request, res: Response) {
@@ -248,39 +334,55 @@ async function cancel(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (id === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
-  try {
-    // Fetch the subscription from stripe API be id
-    const subscription = await stripe.subscriptions.retrieve(id);
-
-    // If subscription customer isn't user, return no result
-    if (subscription.customer !== user.customer_id) {
-      res.json(new ErrorResponse(ErrorType.NO_RESULT));
-      return;
+  // Fetch subscription from stripe by id
+  const subscription = await (async (): Promise<Stripe.Subscription | null> => {
+    try {
+      return await stripe.subscriptions.retrieve(id);
+    } catch {
+      return null;
     }
+  })();
 
-    // Cancel the subscription
+  // Return error if no subscription
+  // Or if subscription customer isn't user
+  if (subscription === null || subscription.customer !== user.customer_id) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "You have no subscription with that id."
+    );
+  }
+
+  // Cancel the subscription
+  try {
     const canceledSubscription = await stripe.subscriptions.cancel(id);
-
     // If subscription isn't canceled, return error
     if (canceledSubscription.status !== "canceled") {
       throw new Error();
     }
-
-    // Update the database so user gets the subscription status and id
-    await User.updateOne(
-      { _id: user._id },
-      { subscription: { status: null, subscription_id: null } },
-    );
-
-    res.json(new ValidResponse());
   } catch {
-    res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when canceling your subscription."
+    );
   }
+
+  // Update the database so user gets the subscription status and id
+  const updateUser: UpdateResult = await User.updateOne(
+    { _id: user._id },
+    { subscription: { status: null, subscription_id: null } }
+  );
+  // If something went wrong, return an error
+  if (updateUser.acknowledged === false) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when updating the subscription."
+    );
+  }
+
+  return sendValidResponse(res, SuccessCode.NO_CONTENT);
 }
 
 async function pay(req: Request, res: Response) {
@@ -289,33 +391,46 @@ async function pay(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (id === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
+  }
+
+  // Fetch the subscription from stripe API be id
+  const subscription = await (async (): Promise<Stripe.Subscription | null> => {
+    try {
+      return await stripe.subscriptions.retrieve(id);
+    } catch {
+      return null;
+    }
+  })();
+
+  // Return no result if subscription is null
+  // Or if subscription customer isn't user
+  if (subscription === null || subscription.customer !== user.customer_id) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "You have no subscription with that id."
+    );
+  }
+
+  // If subscription isn't past_due, return error
+  if (subscription.status !== "past_due") {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "You already have an active subscription."
+    );
+  }
+
+  // If subscription dont have a unpaid invoice
+  if (subscription.latest_invoice === null) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "Your subscription has no unpaid invoice."
+    );
   }
 
   try {
-    // Fetch the subscription from stripe API be id
-    const subscription = await stripe.subscriptions.retrieve(id);
-
-    // If subscription customer isn't user, return no result
-    if (subscription.customer !== user.customer_id) {
-      res.json(new ErrorResponse(ErrorType.NO_RESULT));
-      return;
-    }
-
-    // If subscription isn't past_due, return error
-    if (subscription.status !== "past_due") {
-      res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
-      return;
-    }
-
-    if (subscription.latest_invoice === null) {
-      res.json(new ErrorResponse(ErrorType.NO_RESULT));
-      return;
-    }
-
     const paymentIntent = await stripe.invoices.pay(
-      subscription.latest_invoice as string,
+      subscription.latest_invoice as string
     );
 
     if (paymentIntent.status !== "paid") {
@@ -325,14 +440,13 @@ async function pay(req: Request, res: Response) {
     // Update the database so user gets the subscription status and id
     await User.updateOne(
       { _id: user._id },
-      { subscription: { status: "active", subscription_id: subscription.id } },
+      { subscription: { status: "active", subscription_id: subscription.id } }
     );
 
-    res.json(new ValidResponse());
+    return sendValidResponse(res, SuccessCode.NO_CONTENT);
   } catch (error) {
     if (error instanceof Stripe.errors.StripeError) {
-      res.status(400).send({ error: { message: error.message } });
-      return;
+      throw new ErrorResponse(ErrorCode.CONFLICT, error.message);
     }
   }
 }

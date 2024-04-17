@@ -1,39 +1,44 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { DeleteResult, UpdateResult } from "mongodb";
 import Stripe from "stripe";
 import { ACCESS_TOKEN_SECRET, STRIPE_SECRET_KEY } from "../config.js";
-import { hashPassword } from "../lib/hashPassword.js";
-import { ErrorResponse, ValidResponse } from "../lib/response.js";
+import { User } from "../models/User.js";
+import { VerificationToken } from "../models/VerificationToken.js";
+import { ParamValue } from "../types/ParamValue.js";
+import { ErrorCode, SuccessCode } from "../types/StatusCode.js";
+import { TokenPayload } from "../types/TokenPayload.js";
+import { hashPassword } from "../utils/hashPassword.js";
+import { ErrorResponse, sendValidResponse } from "../utils/sendResponse.js";
 import {
   VerificationType,
   sendVerificationToken,
-} from "../lib/transmitMail.js";
-import { User } from "../models/User.js";
-import { VerificationToken } from "../models/VerificationToken.js";
-import { ErrorType } from "../types/Error.js";
-import { ParamValue } from "../types/ParamValue.js";
-import { TokenPayload } from "../types/TokenPayload.js";
+} from "../utils/transmitMail.js";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
+type TokenResponse = { token: string };
+
 async function validateToken(req: Request, res: Response) {
-  const authorizationHeader = req.headers["authorization"];
+  const authorizationHeader = req.headers.authorization;
   const token =
     authorizationHeader && authorizationHeader.replace(/^Bearer\s/, "");
 
   // Check if token is defined in authorization headers
   if (token === undefined) {
-    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
+    throw new ErrorResponse(
+      ErrorCode.UNAUTHORIZED,
+      "No token in authorization header."
+    );
   }
 
   try {
     // Verify JWT token
     const tokenPayload = jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
     // If all good, return token payload
-    res.json(new ValidResponse(tokenPayload));
+    return sendValidResponse<TokenPayload>(res, SuccessCode.OK, tokenPayload);
   } catch {
-    return res.json(new ErrorResponse(ErrorType.UNAUTHORIZED));
+    throw new ErrorResponse(ErrorCode.UNAUTHORIZED, "Token is not valid.");
   }
 }
 
@@ -47,8 +52,10 @@ async function signNewToken(req: Request, res: Response) {
 
   // If no result, return an error
   if (findUser === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "Couldn't find a user with that Id."
+    );
   }
 
   const payload = (({ _id, name, email, subscription, customer_id }) => ({
@@ -63,27 +70,31 @@ async function signNewToken(req: Request, res: Response) {
     // Sign a JWT token with user information
     const token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
     // If all good, return JWT token
-    res.json(new ValidResponse({ token }));
+    return sendValidResponse<TokenResponse>(res, SuccessCode.OK, { token });
   } catch {
-    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when signing the token."
+    );
   }
 }
 
-async function login(req: Request, res: Response) {
+async function login(req: Request, res: Response, next: NextFunction) {
   const email: ParamValue = req.body.email;
   const password: ParamValue = req.body.password;
 
   // Check if all required values is defined
   if (email === undefined || password === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Hash the password
   const passwordHash = hashPassword(password);
   if (passwordHash === null) {
-    res.json(new ErrorResponse(ErrorType.HASH_PARSING));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Couldn't hash the password you provided."
+    );
   }
 
   // Look for the user in the database by email and password
@@ -94,8 +105,10 @@ async function login(req: Request, res: Response) {
 
   // If no result, return an error
   if (findUser === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "The email or password are incorrect."
+    );
   }
 
   const payload = (({ _id, name, email, subscription, customer_id }) => ({
@@ -110,9 +123,12 @@ async function login(req: Request, res: Response) {
     // Sign a JWT token with user information
     const token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
     // If all good, return JWT token
-    res.json(new ValidResponse({ token }));
+    return sendValidResponse<TokenResponse>(res, SuccessCode.OK, { token });
   } catch {
-    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when signing the token."
+    );
   }
 }
 
@@ -122,8 +138,7 @@ async function signupRequest(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (name === undefined || email === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look if the email is available
@@ -132,8 +147,10 @@ async function signupRequest(req: Request, res: Response) {
   });
   // If user with that email already exists, return error
   if (findUser !== null) {
-    res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "That email is already in use. Please try signing in, or use a different email."
+    );
   }
 
   // Delete all verification tokens in database that has provided email and that isn't consumed
@@ -144,8 +161,10 @@ async function signupRequest(req: Request, res: Response) {
     });
   // If something went wrong, return an error
   if (deleteVerificationToken.acknowledged === false) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when deleting the old verification codes."
+    );
   }
 
   // Create a verification code
@@ -158,20 +177,24 @@ async function signupRequest(req: Request, res: Response) {
   });
   // If something went wrong, return an error
   if (createVerificationToken === null) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when creating the verification code."
+    );
   }
 
   // Send an email to the user with the verification token
   try {
     await sendVerificationToken(VerificationType.Signup, name, email, code);
-  } catch {
-    res.json(new ErrorResponse(ErrorType.MAIL_ERROR));
-    return;
-  }
 
-  // If all good, return OK
-  res.json(new ValidResponse());
+    // If all good, return OK
+    return sendValidResponse(res, SuccessCode.NO_CONTENT);
+  } catch {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when sending the mail."
+    );
+  }
 }
 
 async function signupConfirmation(req: Request, res: Response) {
@@ -183,8 +206,7 @@ async function signupConfirmation(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (email === undefined || code === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look for a verification token in the database
@@ -199,12 +221,14 @@ async function signupConfirmation(req: Request, res: Response) {
   });
   // If there is no result, return error
   if (findVerificationToken === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "The verification code is incorrect."
+    );
   }
 
   // If all good, return OK
-  res.json(new ValidResponse());
+  return sendValidResponse(res, SuccessCode.NO_CONTENT);
 }
 
 async function signupSubmit(req: Request, res: Response) {
@@ -220,8 +244,7 @@ async function signupSubmit(req: Request, res: Response) {
     code === undefined ||
     password === undefined
   ) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look if the email is available
@@ -230,8 +253,10 @@ async function signupSubmit(req: Request, res: Response) {
   });
   // If user with that email already exists, return error
   if (findUser !== null) {
-    res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "That email is already in use. Please try signing in, or use a different email."
+    );
   }
 
   // Look for a verification token in the database
@@ -246,33 +271,36 @@ async function signupSubmit(req: Request, res: Response) {
   });
   // If there is no result, return error
   if (findVerificationToken === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "The verification code is incorrect."
+    );
   }
 
   // Hash the password
   const passwordHash = hashPassword(password);
   if (passwordHash === null) {
-    res.json(new ErrorResponse(ErrorType.HASH_PARSING));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Couldn't hash the password you provided."
+    );
   }
 
   // Create a customer in stripe and receive its id
-  const customerId = await (async (
-    name: string,
-    email: string,
-  ): Promise<string | null> => {
+  const customerId = await (async (): Promise<string | null> => {
     try {
       const customer = await stripe.customers.create({ name, email });
       return customer.id;
     } catch {
       return null;
     }
-  })(name, email);
+  })();
 
   if (customerId === null) {
-    res.json(new ErrorResponse(ErrorType.STRIPE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when creating the customer."
+    );
   }
 
   // Create a new user in the database
@@ -284,20 +312,24 @@ async function signupSubmit(req: Request, res: Response) {
   });
   // If something went wrong, return an error
   if (createUser === null) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when creating the user."
+    );
   }
 
   // Update the verification token to consumed
   const updateVerificationToken: UpdateResult =
     await VerificationToken.updateOne(
       { _id: findVerificationToken._id },
-      { consumed: true },
+      { consumed: true }
     );
   // If something went wrong, return an error
   if (updateVerificationToken.acknowledged === false) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when updating the verification token."
+    );
   }
 
   const payload = (({ _id, name, email, subscription, customer_id }) => ({
@@ -312,9 +344,14 @@ async function signupSubmit(req: Request, res: Response) {
     // Sign a JWT token with user information
     const token = jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
     // If all good, return JWT token
-    res.json(new ValidResponse({ token }));
+    return sendValidResponse<TokenResponse>(res, SuccessCode.CREATED, {
+      token,
+    });
   } catch {
-    res.json(new ErrorResponse(ErrorType.TOKEN_ERROR));
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when signing the token."
+    );
   }
 }
 
@@ -323,8 +360,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (email === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look for the user in the database by email
@@ -333,8 +369,10 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   });
   // If there is no user with that email, return error
   if (findUser === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "A user with that email doesn't exist."
+    );
   }
 
   // Create a verification code
@@ -348,8 +386,10 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   });
   // If something went wrong, return an error
   if (createVerificationToken === null) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when creating the verification code."
+    );
   }
 
   // Send an email to the user with the verification code
@@ -358,15 +398,17 @@ async function forgotPasswordRequest(req: Request, res: Response) {
       VerificationType.ForgotPassword,
       findUser.name,
       findUser.email,
-      code,
+      code
     );
-  } catch {
-    res.json(new ErrorResponse(ErrorType.MAIL_ERROR));
-    return;
-  }
 
-  // If all good, return OK
-  res.json(new ValidResponse());
+    // If all good, return OK
+    return sendValidResponse(res, SuccessCode.NO_CONTENT);
+  } catch {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when sending the mail."
+    );
+  }
 }
 
 async function forgotPasswordConfirmation(req: Request, res: Response) {
@@ -378,8 +420,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (email === undefined || code === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look for the user in the database by email
@@ -388,8 +429,10 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   });
   // If there is no user with that email, return error
   if (findUser === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "A user with that email doesn't exist."
+    );
   }
 
   // Look for a verification token in the database
@@ -404,12 +447,14 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   });
   // If there is no result, return error
   if (findVerificationToken === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "The verification code is incorrect."
+    );
   }
 
   // If all good, return OK
-  res.json(new ValidResponse());
+  return sendValidResponse(res, SuccessCode.NO_CONTENT);
 }
 
 async function forgotPasswordSubmit(req: Request, res: Response) {
@@ -422,8 +467,7 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (email === undefined || code === undefined || password === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look for the user in the database by email
@@ -432,8 +476,10 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   });
   // If there is no user with that email, return error
   if (findUser === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "A user with that email doesn't exist."
+    );
   }
 
   // Look for a verification token in the database
@@ -448,42 +494,50 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   });
   // If there is no result, return error
   if (findVerificationToken === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "The verification code is incorrect."
+    );
   }
 
   // Hash the new password
   const passwordHash = hashPassword(password);
   if (passwordHash === null) {
-    res.json(new ErrorResponse(ErrorType.HASH_PARSING));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Couldn't hash the password you provided."
+    );
   }
 
   // Update the user password in the database
   const updateUser: UpdateResult = await User.updateOne(
     { _id: findUser._id },
-    { password_hash: passwordHash },
+    { password_hash: passwordHash }
   );
   // If something went wrong, return an error
   if (updateUser.acknowledged === false) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when updating the password."
+    );
   }
 
   // Update the verification token to consumed
   const updateVerificationToken: UpdateResult =
     await VerificationToken.updateOne(
       { _id: findVerificationToken._id },
-      { consumed: true },
+      { consumed: true }
     );
   // If something went wrong, return an error
   if (updateVerificationToken.acknowledged === false) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when updating the verification token."
+    );
   }
 
   // If all good, return OK
-  res.json(new ValidResponse());
+  return sendValidResponse(res, SuccessCode.NO_CONTENT);
 }
 
 export default {

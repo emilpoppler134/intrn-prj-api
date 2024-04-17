@@ -1,10 +1,19 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
-import { ErrorResponse, ValidResponse } from "../lib/response.js";
 import { Bot } from "../models/Bot.js";
-import { ErrorType } from "../types/Error.js";
 import { ParamValue } from "../types/ParamValue.js";
+import { ErrorCode, SuccessCode } from "../types/StatusCode.js";
 import { TokenPayload } from "../types/TokenPayload.js";
+import { ErrorResponse, sendValidResponse } from "../utils/sendResponse.js";
+
+type BotResponse = {
+  id: string;
+  name: string;
+  personality: string;
+  photo: string;
+  files: Array<string>;
+  timestamp: number;
+};
 
 async function find(req: Request, res: Response) {
   const user: TokenPayload = res.locals.user;
@@ -12,8 +21,7 @@ async function find(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (id === undefined || !Types.ObjectId.isValid(id)) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look for the bot in the database by Id and userId
@@ -23,19 +31,22 @@ async function find(req: Request, res: Response) {
   });
   // If no result, return error
   if (findBot === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "There is no bot with that Id.",
+    );
   }
 
-  const botResponse = (({
-    _id,
-    name,
-    personality,
-    photo,
-    files,
-    timestamp,
-  }) => ({ _id, name, personality, photo, files, timestamp }))(findBot);
-  res.json(new ValidResponse(botResponse));
+  const botResponse: BotResponse = {
+    id: findBot._id.toString(),
+    name: findBot.name,
+    personality: findBot.personality,
+    photo: findBot.photo,
+    files: findBot.files,
+    timestamp: Math.floor(new Date(findBot.timestamp).getTime() / 1000),
+  };
+
+  return sendValidResponse<BotResponse>(res, SuccessCode.OK, botResponse);
 }
 
 async function list(req: Request, res: Response) {
@@ -45,23 +56,28 @@ async function list(req: Request, res: Response) {
   const listBots = await Bot.find({
     user: user._id,
   });
-  // If no result, return error
+  // If db error, return error
   if (listBots === null) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when fetching the bots.",
+    );
   }
 
-  const botResponse = listBots.map((item) =>
-    (({ _id, name, personality, photo, files, timestamp }) => ({
-      _id,
-      name,
-      personality,
-      photo,
-      files,
-      timestamp,
-    }))(item),
+  const botResponse: Array<BotResponse> = listBots.map((item) => ({
+    id: item._id.toString(),
+    name: item.name,
+    personality: item.personality,
+    photo: item.photo,
+    files: item.files,
+    timestamp: Math.floor(new Date(item.timestamp).getTime() / 1000),
+  }));
+
+  return sendValidResponse<Array<BotResponse>>(
+    res,
+    SuccessCode.OK,
+    botResponse,
   );
-  res.json(new ValidResponse(botResponse));
 }
 
 async function create(req: Request, res: Response) {
@@ -70,8 +86,7 @@ async function create(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (name === undefined) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look if the name is available
@@ -81,8 +96,10 @@ async function create(req: Request, res: Response) {
   });
   // If bot with that name already exists, return error
   if (findBot !== null) {
-    res.json(new ErrorResponse(ErrorType.ALREADY_EXISTING));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "You already have a bot with that name.",
+    );
   }
 
   // Create a new bot in the database
@@ -92,12 +109,23 @@ async function create(req: Request, res: Response) {
   });
   // If something went wrong, return an error
   if (createBot === null) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when creating the bot.",
+    );
   }
 
-  // If all good, return JWT token
-  res.json(new ValidResponse({ id: createBot._id }));
+  const botResponse: BotResponse = {
+    id: createBot._id.toString(),
+    name: createBot.name,
+    personality: createBot.personality,
+    photo: createBot.photo,
+    files: createBot.files,
+    timestamp: Math.floor(new Date(createBot.timestamp).getTime() / 1000),
+  };
+
+  // If all good, return the bot Id.
+  return sendValidResponse<BotResponse>(res, SuccessCode.CREATED, botResponse);
 }
 
 async function remove(req: Request, res: Response) {
@@ -106,8 +134,7 @@ async function remove(req: Request, res: Response) {
 
   // Check if all required values is defined
   if (id === undefined || !Types.ObjectId.isValid(id)) {
-    res.json(new ErrorResponse(ErrorType.INVALID_PARAMS));
-    return;
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
   }
 
   // Look for the bot in the database by Id and userId
@@ -117,8 +144,10 @@ async function remove(req: Request, res: Response) {
   });
   // If no result, return error
   if (findBot === null) {
-    res.json(new ErrorResponse(ErrorType.NO_RESULT));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "There is no bot with that Id.",
+    );
   }
 
   // Delete the bot from the database by id and userId
@@ -128,12 +157,14 @@ async function remove(req: Request, res: Response) {
   });
   // If something went wrong, return an error
   if (deleteBot.acknowledged === false) {
-    res.json(new ErrorResponse(ErrorType.DATABASE_ERROR));
-    return;
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when deleting the bot.",
+    );
   }
 
   // If all good, return OK
-  res.json(new ValidResponse());
+  return sendValidResponse(res, SuccessCode.NO_CONTENT);
 }
 
 export default { find, list, create, remove };

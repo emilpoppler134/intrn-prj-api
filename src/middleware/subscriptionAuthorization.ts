@@ -1,12 +1,11 @@
 import { NextFunction, Request, Response } from "express";
-import { ErrorResponse } from "../lib/response.js";
-import { ErrorType } from "../types/Error.js";
+import { ErrorCode } from "../types/StatusCode.js";
 import { TokenPayload } from "../types/TokenPayload.js";
 
 async function subscriptionAuthorization(
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) {
   const user: TokenPayload = res.locals.user;
 
@@ -14,7 +13,9 @@ async function subscriptionAuthorization(
     user.subscription.status === null ||
     user.subscription.subscription_id === null
   ) {
-    return res.json(new ErrorResponse(ErrorType.NO_SUBSCRIPTION));
+    return res
+      .status(ErrorCode.FORBIDDEN)
+      .send({ message: "User don't have a subscription." });
   }
 
   next();

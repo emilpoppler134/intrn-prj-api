@@ -19,11 +19,10 @@ export async function handleWebhook(req: Request, res: Response) {
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
-      STRIPE_WEBHOOK_SECRET,
+      STRIPE_WEBHOOK_SECRET
     );
   } catch (error) {
     if (error instanceof Stripe.errors.StripeError) {
-      console.log(error);
       res.status(400).send(`Webhook Error: ${error.message}`);
       return;
     }
@@ -46,7 +45,7 @@ export async function handleWebhook(req: Request, res: Response) {
       const subscription = await (async (invoice: Stripe.Invoice) => {
         try {
           return await stripe.subscriptions.retrieve(
-            invoice.subscription as string,
+            invoice.subscription as string
           );
         } catch {
           return null;
@@ -68,7 +67,7 @@ export async function handleWebhook(req: Request, res: Response) {
               status: "active",
               subscription_id: subscription.id,
             },
-          },
+          }
         );
       }
 
@@ -86,7 +85,7 @@ export async function handleWebhook(req: Request, res: Response) {
       const subscription = await (async (invoice: Stripe.Invoice) => {
         try {
           return await stripe.subscriptions.retrieve(
-            invoice.subscription as string,
+            invoice.subscription as string
           );
         } catch {
           return null;
@@ -108,7 +107,7 @@ export async function handleWebhook(req: Request, res: Response) {
               status: "past_due",
               subscription_id: subscription.id,
             },
-          },
+          }
         );
       }
 
@@ -122,7 +121,7 @@ export async function handleWebhook(req: Request, res: Response) {
       ) {
         await User.updateOne(
           { customer_id: event.data.object.customer },
-          { subscription: { status: null, subscription_id: null } },
+          { subscription: { status: null, subscription_id: null } }
         );
       }
 
