@@ -11,8 +11,8 @@ import { TokenPayload } from "../types/TokenPayload.js";
 import { hashPassword } from "../utils/hashPassword.js";
 import { ErrorResponse, sendValidResponse } from "../utils/sendResponse.js";
 import {
-  VerificationType,
-  sendVerificationToken,
+  sendForgotPasswordVerificaitonMail,
+  sendSignupVerificaitonMail,
 } from "../utils/transmitMail.js";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -185,7 +185,7 @@ async function signupRequest(req: Request, res: Response) {
 
   // Send an email to the user with the verification token
   try {
-    await sendVerificationToken(VerificationType.Signup, name, email, code);
+    await sendSignupVerificaitonMail(name, email, code);
 
     // If all good, return OK
     return sendValidResponse(res, SuccessCode.NO_CONTENT);
@@ -394,8 +394,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
 
   // Send an email to the user with the verification code
   try {
-    await sendVerificationToken(
-      VerificationType.ForgotPassword,
+    await sendForgotPasswordVerificaitonMail(
       findUser.name,
       findUser.email,
       code
