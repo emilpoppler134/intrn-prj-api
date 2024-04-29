@@ -55,7 +55,7 @@ async function createPaymentIntent(req: Request, res: Response) {
   if (subscriptions === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when connecting to stripe."
+      "Something went wrong when connecting to stripe.",
     );
   }
 
@@ -65,7 +65,7 @@ async function createPaymentIntent(req: Request, res: Response) {
   ) {
     throw new ErrorResponse(
       ErrorCode.CONFLICT,
-      "You already have an active subscription. Cancel it to start a new one."
+      "You already have an active subscription. Cancel it to start a new one.",
     );
   }
 
@@ -106,7 +106,7 @@ async function createPaymentIntent(req: Request, res: Response) {
   if (priceId === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when fetching the price."
+      "Something went wrong when fetching the price.",
     );
   }
 
@@ -139,14 +139,14 @@ async function createPaymentIntent(req: Request, res: Response) {
         return sendValidResponse<PaymentIntentResponse>(
           res,
           SuccessCode.OK,
-          paymentIntent
+          paymentIntent,
         );
       }
     }
   } catch {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when fetching your current subscriptions."
+      "Something went wrong when fetching your current subscriptions.",
     );
   }
 
@@ -170,7 +170,7 @@ async function createPaymentIntent(req: Request, res: Response) {
     if (clientSecret === null) {
       throw new ErrorResponse(
         ErrorCode.SERVER_ERROR,
-        "Something went wrong when fetching the client secret of your payment intent."
+        "Something went wrong when fetching the client secret of your payment intent.",
       );
     }
 
@@ -182,7 +182,7 @@ async function createPaymentIntent(req: Request, res: Response) {
     return sendValidResponse<PaymentIntentResponse>(
       res,
       SuccessCode.CREATED,
-      paymentIntent
+      paymentIntent,
     );
   } catch (error) {
     if (error instanceof ErrorResponse) throw error;
@@ -221,19 +221,19 @@ async function find(req: Request, res: Response) {
   ) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "You have no subscription with that id."
+      "You have no subscription with that id.",
     );
   }
 
   // Find the subscription item that is active
   const subscriptionItem = subscription.items.data.find(
-    (item) => item.price.active === true
+    (item) => item.price.active === true,
   );
 
   if (subscriptionItem === undefined) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Your subscription doesn't have a subscription item."
+      "Your subscription doesn't have a subscription item.",
     );
   }
 
@@ -241,7 +241,7 @@ async function find(req: Request, res: Response) {
   if (subscriptionItem.price.unit_amount === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Your subscription doesn't have a price."
+      "Your subscription doesn't have a price.",
     );
   }
 
@@ -267,7 +267,7 @@ async function find(req: Request, res: Response) {
   return sendValidResponse<SubscriptionResponse>(
     res,
     SuccessCode.OK,
-    subscriptionResponse
+    subscriptionResponse,
   );
 }
 
@@ -291,19 +291,19 @@ async function confirm(req: Request, res: Response) {
   if (subscriptions === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when connecting to stripe."
+      "Something went wrong when connecting to stripe.",
     );
   }
 
   // Find the active one
   const activeSubscription = subscriptions.find(
-    (item) => item.status === "active"
+    (item) => item.status === "active",
   );
 
   if (activeSubscription === undefined) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "Your subscription isn't active."
+      "Your subscription isn't active.",
     );
   }
 
@@ -315,13 +315,13 @@ async function confirm(req: Request, res: Response) {
         status: "active",
         subscription_id: activeSubscription.id,
       },
-    }
+    },
   );
   // If something went wrong, return an error
   if (updateUser.acknowledged === false) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when updating the subscription."
+      "Something went wrong when updating the subscription.",
     );
   }
 
@@ -351,7 +351,7 @@ async function cancel(req: Request, res: Response) {
   if (subscription === null || subscription.customer !== user.customer_id) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "You have no subscription with that id."
+      "You have no subscription with that id.",
     );
   }
 
@@ -365,20 +365,20 @@ async function cancel(req: Request, res: Response) {
   } catch {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when canceling your subscription."
+      "Something went wrong when canceling your subscription.",
     );
   }
 
   // Update the database so user gets the subscription status and id
   const updateUser: UpdateResult = await User.updateOne(
     { _id: user._id },
-    { subscription: { status: null, subscription_id: null } }
+    { subscription: { status: null, subscription_id: null } },
   );
   // If something went wrong, return an error
   if (updateUser.acknowledged === false) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when updating the subscription."
+      "Something went wrong when updating the subscription.",
     );
   }
 
@@ -408,7 +408,7 @@ async function pay(req: Request, res: Response) {
   if (subscription === null || subscription.customer !== user.customer_id) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "You have no subscription with that id."
+      "You have no subscription with that id.",
     );
   }
 
@@ -416,7 +416,7 @@ async function pay(req: Request, res: Response) {
   if (subscription.status !== "past_due") {
     throw new ErrorResponse(
       ErrorCode.CONFLICT,
-      "You already have an active subscription."
+      "You already have an active subscription.",
     );
   }
 
@@ -424,13 +424,13 @@ async function pay(req: Request, res: Response) {
   if (subscription.latest_invoice === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "Your subscription has no unpaid invoice."
+      "Your subscription has no unpaid invoice.",
     );
   }
 
   try {
     const paymentIntent = await stripe.invoices.pay(
-      subscription.latest_invoice as string
+      subscription.latest_invoice as string,
     );
 
     if (paymentIntent.status !== "paid") {
@@ -440,7 +440,7 @@ async function pay(req: Request, res: Response) {
     // Update the database so user gets the subscription status and id
     await User.updateOne(
       { _id: user._id },
-      { subscription: { status: "active", subscription_id: subscription.id } }
+      { subscription: { status: "active", subscription_id: subscription.id } },
     );
 
     return sendValidResponse(res, SuccessCode.NO_CONTENT);

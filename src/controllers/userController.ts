@@ -28,7 +28,7 @@ async function validateToken(req: Request, res: Response) {
   if (token === undefined) {
     throw new ErrorResponse(
       ErrorCode.UNAUTHORIZED,
-      "No token in authorization header."
+      "No token in authorization header.",
     );
   }
 
@@ -54,7 +54,7 @@ async function signNewToken(req: Request, res: Response) {
   if (findUser === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "Couldn't find a user with that Id."
+      "Couldn't find a user with that Id.",
     );
   }
 
@@ -74,7 +74,7 @@ async function signNewToken(req: Request, res: Response) {
   } catch {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when signing the token."
+      "Something went wrong when signing the token.",
     );
   }
 }
@@ -93,7 +93,7 @@ async function login(req: Request, res: Response, next: NextFunction) {
   if (passwordHash === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Couldn't hash the password you provided."
+      "Couldn't hash the password you provided.",
     );
   }
 
@@ -107,7 +107,7 @@ async function login(req: Request, res: Response, next: NextFunction) {
   if (findUser === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "The email or password are incorrect."
+      "The email or password are incorrect.",
     );
   }
 
@@ -127,7 +127,7 @@ async function login(req: Request, res: Response, next: NextFunction) {
   } catch {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when signing the token."
+      "Something went wrong when signing the token.",
     );
   }
 }
@@ -149,7 +149,7 @@ async function signupRequest(req: Request, res: Response) {
   if (findUser !== null) {
     throw new ErrorResponse(
       ErrorCode.CONFLICT,
-      "That email is already in use. Please try signing in, or use a different email."
+      "That email is already in use. Please try signing in, or use a different email.",
     );
   }
 
@@ -163,7 +163,7 @@ async function signupRequest(req: Request, res: Response) {
   if (deleteVerificationToken.acknowledged === false) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when deleting the old verification codes."
+      "Something went wrong when deleting the old verification codes.",
     );
   }
 
@@ -179,7 +179,7 @@ async function signupRequest(req: Request, res: Response) {
   if (createVerificationToken === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when creating the verification code."
+      "Something went wrong when creating the verification code.",
     );
   }
 
@@ -192,7 +192,7 @@ async function signupRequest(req: Request, res: Response) {
   } catch {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when sending the mail."
+      "Something went wrong when sending the mail.",
     );
   }
 }
@@ -223,7 +223,7 @@ async function signupConfirmation(req: Request, res: Response) {
   if (findVerificationToken === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "The verification code is incorrect."
+      "The verification code is incorrect.",
     );
   }
 
@@ -255,7 +255,7 @@ async function signupSubmit(req: Request, res: Response) {
   if (findUser !== null) {
     throw new ErrorResponse(
       ErrorCode.CONFLICT,
-      "That email is already in use. Please try signing in, or use a different email."
+      "That email is already in use. Please try signing in, or use a different email.",
     );
   }
 
@@ -273,7 +273,7 @@ async function signupSubmit(req: Request, res: Response) {
   if (findVerificationToken === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "The verification code is incorrect."
+      "The verification code is incorrect.",
     );
   }
 
@@ -282,7 +282,7 @@ async function signupSubmit(req: Request, res: Response) {
   if (passwordHash === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Couldn't hash the password you provided."
+      "Couldn't hash the password you provided.",
     );
   }
 
@@ -299,7 +299,7 @@ async function signupSubmit(req: Request, res: Response) {
   if (customerId === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when creating the customer."
+      "Something went wrong when creating the customer.",
     );
   }
 
@@ -314,7 +314,7 @@ async function signupSubmit(req: Request, res: Response) {
   if (createUser === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when creating the user."
+      "Something went wrong when creating the user.",
     );
   }
 
@@ -322,13 +322,13 @@ async function signupSubmit(req: Request, res: Response) {
   const updateVerificationToken: UpdateResult =
     await VerificationToken.updateOne(
       { _id: findVerificationToken._id },
-      { consumed: true }
+      { consumed: true },
     );
   // If something went wrong, return an error
   if (updateVerificationToken.acknowledged === false) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when updating the verification token."
+      "Something went wrong when updating the verification token.",
     );
   }
 
@@ -350,7 +350,7 @@ async function signupSubmit(req: Request, res: Response) {
   } catch {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when signing the token."
+      "Something went wrong when signing the token.",
     );
   }
 }
@@ -371,7 +371,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   if (findUser === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "A user with that email doesn't exist."
+      "A user with that email doesn't exist.",
     );
   }
 
@@ -388,7 +388,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   if (createVerificationToken === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when creating the verification code."
+      "Something went wrong when creating the verification code.",
     );
   }
 
@@ -397,7 +397,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
     await sendForgotPasswordVerificaitonMail(
       findUser.name,
       findUser.email,
-      code
+      code,
     );
 
     // If all good, return OK
@@ -405,7 +405,7 @@ async function forgotPasswordRequest(req: Request, res: Response) {
   } catch {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when sending the mail."
+      "Something went wrong when sending the mail.",
     );
   }
 }
@@ -430,7 +430,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   if (findUser === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "A user with that email doesn't exist."
+      "A user with that email doesn't exist.",
     );
   }
 
@@ -448,7 +448,7 @@ async function forgotPasswordConfirmation(req: Request, res: Response) {
   if (findVerificationToken === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "The verification code is incorrect."
+      "The verification code is incorrect.",
     );
   }
 
@@ -477,7 +477,7 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   if (findUser === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "A user with that email doesn't exist."
+      "A user with that email doesn't exist.",
     );
   }
 
@@ -495,7 +495,7 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   if (findVerificationToken === null) {
     throw new ErrorResponse(
       ErrorCode.NO_RESULT,
-      "The verification code is incorrect."
+      "The verification code is incorrect.",
     );
   }
 
@@ -504,20 +504,20 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   if (passwordHash === null) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Couldn't hash the password you provided."
+      "Couldn't hash the password you provided.",
     );
   }
 
   // Update the user password in the database
   const updateUser: UpdateResult = await User.updateOne(
     { _id: findUser._id },
-    { password_hash: passwordHash }
+    { password_hash: passwordHash },
   );
   // If something went wrong, return an error
   if (updateUser.acknowledged === false) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when updating the password."
+      "Something went wrong when updating the password.",
     );
   }
 
@@ -525,13 +525,13 @@ async function forgotPasswordSubmit(req: Request, res: Response) {
   const updateVerificationToken: UpdateResult =
     await VerificationToken.updateOne(
       { _id: findVerificationToken._id },
-      { consumed: true }
+      { consumed: true },
     );
   // If something went wrong, return an error
   if (updateVerificationToken.acknowledged === false) {
     throw new ErrorResponse(
       ErrorCode.SERVER_ERROR,
-      "Something went wrong when updating the verification token."
+      "Something went wrong when updating the verification token.",
     );
   }
 

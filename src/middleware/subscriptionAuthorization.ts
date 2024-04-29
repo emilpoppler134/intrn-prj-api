@@ -5,7 +5,7 @@ import { TokenPayload } from "../types/TokenPayload.js";
 async function subscriptionAuthorization(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   const user: TokenPayload = res.locals.user;
 

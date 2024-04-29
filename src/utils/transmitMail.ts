@@ -12,7 +12,7 @@ const mg = mailgun.client({
 export async function sendSignupVerificaitonMail(
   name: string,
   email: string,
-  code: number
+  code: number,
 ) {
   const data: MailgunMessageData = {
     from: "Netlight <mailgun@sandboxafedf727d548474ea6bc890395e70e14.mailgun.org>",
@@ -47,14 +47,14 @@ export async function sendSignupVerificaitonMail(
 
   mg.messages.create(
     "sandboxafedf727d548474ea6bc890395e70e14.mailgun.org",
-    data
+    data,
   );
 }
 
 export async function sendForgotPasswordVerificaitonMail(
   name: string,
   email: string,
-  code: number
+  code: number,
 ) {
   const data: MailgunMessageData = {
     from: "Netlight <mailgun@sandboxafedf727d548474ea6bc890395e70e14.mailgun.org>",
@@ -89,6 +89,6 @@ export async function sendForgotPasswordVerificaitonMail(
 
   mg.messages.create(
     "sandboxafedf727d548474ea6bc890395e70e14.mailgun.org",
-    data
+    data,
   );
 }

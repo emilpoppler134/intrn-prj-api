@@ -5,7 +5,7 @@ export const errorHandler = (
   error: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   if (error instanceof ErrorResponse) {
     return res.status(error.status).send({ message: error.message });

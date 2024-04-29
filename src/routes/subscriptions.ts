@@ -8,18 +8,18 @@ const router = express.Router();
 router.post(
   "/create-payment-intent",
   authorization,
-  asyncHandler(subscriptionController.createPaymentIntent)
+  asyncHandler(subscriptionController.createPaymentIntent),
 );
 router.post("/find", authorization, asyncHandler(subscriptionController.find));
 router.post(
   "/confirm",
   authorization,
-  asyncHandler(subscriptionController.confirm)
+  asyncHandler(subscriptionController.confirm),
 );
 router.post(
   "/cancel",
   authorization,
-  asyncHandler(subscriptionController.cancel)
+  asyncHandler(subscriptionController.cancel),
 );
 router.post("/pay", authorization, asyncHandler(subscriptionController.pay));
 

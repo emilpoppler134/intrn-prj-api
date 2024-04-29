@@ -9,26 +9,26 @@ router.post("/validate-token", asyncHandler(userController.validateToken));
 router.post(
   "/sign-new-token",
   authorization,
-  asyncHandler(userController.signNewToken)
+  asyncHandler(userController.signNewToken),
 );
 router.post("/login", asyncHandler(userController.login));
 router.post("/signup-request", asyncHandler(userController.signupRequest));
 router.post(
   "/signup-confirmation",
-  asyncHandler(userController.signupConfirmation)
+  asyncHandler(userController.signupConfirmation),
 );
 router.post("/signup-submit", asyncHandler(userController.signupSubmit));
 router.post(
   "/forgot-password-request",
-  asyncHandler(userController.forgotPasswordRequest)
+  asyncHandler(userController.forgotPasswordRequest),
 );
 router.post(
   "/forgot-password-confirmation",
-  asyncHandler(userController.forgotPasswordConfirmation)
+  asyncHandler(userController.forgotPasswordConfirmation),
 );
 router.post(
   "/forgot-password-submit",
-  asyncHandler(userController.forgotPasswordSubmit)
+  asyncHandler(userController.forgotPasswordSubmit),
 );
 
 export default router;
