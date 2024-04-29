@@ -11,11 +11,13 @@ import {
 } from "./config.js";
 
 import "./models/Bot.js";
+import "./models/Model.js";
 import "./models/User.js";
 import "./models/VerificationToken.js";
 
 import botRoutes from "./routes/bots.js";
 import imageRoutes from "./routes/images.js";
+import modelRoutes from "./routes/models.js";
 import productRoutes from "./routes/products.js";
 import subscriptionRoutes from "./routes/subscriptions.js";
 import userRoutes from "./routes/users.js";
@@ -28,7 +30,7 @@ const server = express();
 server.post(
   "/webhook",
   express.raw({ type: "application/json" }),
-  handleWebhook
+  handleWebhook,
 );
 
 server.use(cors());
@@ -36,6 +38,7 @@ server.use(bodyParser.json());
 
 server.use("/images", imageRoutes);
 server.use("/bots", botRoutes);
+server.use("/models", modelRoutes);
 server.use("/users", userRoutes);
 server.use("/products", productRoutes);
 server.use("/subscriptions", subscriptionRoutes);
@@ -44,7 +47,7 @@ server.use(errorHandler);
 
 mongodb
   .connect(
-    `mongodb+srv://${DATABASE_USERNAME}:${DATABASE_PASSWORD}@${DATABASE_HOST}/${DATABASE_NAME}`
+    `mongodb+srv://${DATABASE_USERNAME}:${DATABASE_PASSWORD}@${DATABASE_HOST}/${DATABASE_NAME}`,
   )
   .then(() => {
     console.log("Successfully connected to mongodb.");

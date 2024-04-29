@@ -19,5 +19,7 @@ export const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || "";
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 
+export const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
+
 export const API_ADDRESS = process.env.API_ADDRESS;
 export const PORT = parseInt(process.env.PORT || "4000");

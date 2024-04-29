@@ -11,19 +11,31 @@ router.post(
   "/find",
   authorization,
   subscriptionAuthorization,
-  asyncHandler(botController.find)
+  asyncHandler(botController.find),
 );
 router.post(
   "/create",
   authorization,
   subscriptionAuthorization,
-  asyncHandler(botController.create)
+  asyncHandler(botController.create),
 );
 router.post(
-  "/remove",
+  "/:id/update",
   authorization,
   subscriptionAuthorization,
-  asyncHandler(botController.remove)
+  asyncHandler(botController.update),
+);
+router.post(
+  "/:id/remove",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.remove),
+);
+router.post(
+  "/:id/chat",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.chat),
 );
 
 export default router;

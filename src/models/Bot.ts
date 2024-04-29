@@ -1,12 +1,15 @@
-import { Schema, model, Types } from "mongoose";
+import { Schema, Types, model } from "mongoose";
 
 type IBot = {
   _id: Types.ObjectId;
   user: Types.ObjectId;
   name: string;
-  personality: string;
   photo: string;
-  files: Array<string>;
+  system_prompt: string;
+  model: Types.ObjectId;
+  maxTokens: number;
+  temperature: number;
+  topP: number;
   timestamp: Date;
 };
 
@@ -20,20 +23,35 @@ const schema = new Schema<IBot>({
     required: true,
     ref: "User",
   },
-  personality: {
-    type: String,
-    required: false,
-  },
   photo: {
     type: String,
     required: false,
   },
-  files: [
-    {
-      type: String,
-      required: false,
-    },
-  ],
+  system_prompt: {
+    type: String,
+    required: true,
+  },
+  model: {
+    type: Schema.Types.ObjectId,
+    required: false,
+    ref: "Model",
+    default: () => new Types.ObjectId("662a4dc2813159e3db48a0b1"),
+  },
+  maxTokens: {
+    type: Number,
+    required: false,
+    default: () => 800,
+  },
+  temperature: {
+    type: Number,
+    required: false,
+    default: () => 0.75,
+  },
+  topP: {
+    type: Number,
+    required: false,
+    default: () => 0.9,
+  },
   timestamp: {
     type: Date,
     required: false,
@@ -46,3 +64,4 @@ const schema = new Schema<IBot>({
 });
 
 export const Bot = model<IBot>("Bot", schema);
+export type { IBot };
