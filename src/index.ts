@@ -11,7 +11,10 @@ import {
 } from "./config.js";
 
 import "./models/Bot.js";
+import "./models/Configuration.js";
+import "./models/Language.js";
 import "./models/Model.js";
+import "./models/Prompt.js";
 import "./models/User.js";
 import "./models/VerificationToken.js";
 

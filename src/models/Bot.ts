@@ -4,13 +4,20 @@ type IBot = {
   _id: Types.ObjectId;
   user: Types.ObjectId;
   name: string;
-  photo: string;
-  system_prompt: string;
+  photo: string | null;
+  language: Types.ObjectId;
+  prompts: Array<PromptItem>;
   model: Types.ObjectId;
-  maxTokens: number;
-  temperature: number;
-  topP: number;
+  configuration: Types.ObjectId;
+  maxTokens: number | null;
+  temperature: number | null;
+  topP: number | null;
   timestamp: Date;
+};
+
+export type PromptItem = {
+  option: Types.ObjectId;
+  value: string;
 };
 
 const schema = new Schema<IBot>({
@@ -26,16 +33,34 @@ const schema = new Schema<IBot>({
   photo: {
     type: String,
     required: false,
+    default: () => null,
   },
-  system_prompt: {
-    type: String,
+  language: {
+    type: Schema.Types.ObjectId,
     required: true,
+    ref: "Language",
   },
+  prompts: [
+    {
+      option: {
+        type: Schema.Types.ObjectId,
+        required: true,
+      },
+      value: {
+        type: String,
+        required: true,
+      },
+    },
+  ],
   model: {
     type: Schema.Types.ObjectId,
-    required: false,
+    required: true,
     ref: "Model",
-    default: () => new Types.ObjectId("662a4dc2813159e3db48a0b1"),
+  },
+  configuration: {
+    type: Schema.Types.ObjectId,
+    required: true,
+    ref: "Configuration",
   },
   maxTokens: {
     type: Number,
