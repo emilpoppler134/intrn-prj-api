@@ -24,9 +24,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "watch": "npm run build && node ./dist/index.js",
+    "watch": "npm run build && node ./dist/src/index.js",
     "dev": "./node_modules/nodemon/bin/nodemon.js -e ts  --exec \"npm run watch\"",
-    "start": "node ./dist/index.js",
+    "start": "node ./dist/src/index.js",
     "format": "npx prettier 'src/**/*.{js,ts,mjs,cjs,json,jsx,tsx}' --write",
     "vercel-build": "echo building..."
   },
