@@ -1,10 +1,26 @@
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { ReplicateStream } from "ai";
+import crypto from "crypto";
 import { Request, Response } from "express";
+import mime from "mime";
 import { DeleteResult, UpdateResult } from "mongodb";
 import { Types } from "mongoose";
 import Replicate from "replicate";
-import { REPLICATE_API_TOKEN } from "../config.js";
-import { Bot, IBot, PromptItem } from "../models/Bot.js";
+import { Readable } from "stream";
+import {
+  API_ADDRESS,
+  REPLICATE_API_TOKEN,
+  S3_ACCESS_KEY_ID,
+  S3_BUCKET_NAME,
+  S3_REGION,
+  S3_SECRET_ACCESS_KEY,
+} from "../config.js";
+import { Bot, FileItem, IBot, PromptItem } from "../models/Bot.js";
 import { Configuration, IConfiguration } from "../models/Configuration.js";
 import { ILanguage, Language } from "../models/Language.js";
 import { IModel, Model } from "../models/Model.js";
@@ -13,10 +29,19 @@ import { NumberParam, ParamValue } from "../types/ParamValue.js";
 import { ErrorCode, SuccessCode } from "../types/StatusCode.js";
 import { TokenPayload } from "../types/TokenPayload.js";
 import { ErrorResponse, sendValidResponse } from "../utils/sendResponse.js";
-
 const replicate = new Replicate({
   auth: REPLICATE_API_TOKEN,
 });
+
+const client = new S3Client({
+  region: S3_REGION,
+  credentials: {
+    accessKeyId: S3_ACCESS_KEY_ID,
+    secretAccessKey: S3_SECRET_ACCESS_KEY,
+  },
+});
+
+const allowedFileTypes = ["json", "txt"];
 
 type BotExtended = Omit<
   IBot,
@@ -39,6 +64,7 @@ type BotResponse = {
   maxTokens: number;
   temperature: number;
   topP: number;
+  files: Array<FileItem & { url: string }>;
   timestamp: number;
 };
 
@@ -167,6 +193,14 @@ async function find(req: Request, res: Response) {
       maxTokens: botConfiguration.maxTokens,
       temperature: botConfiguration.temperature,
       topP: botConfiguration.topP,
+      files: findBot.files.map((item) => ({
+        _id: item._id,
+        key: item.key,
+        name: item.name,
+        type: item.type,
+        size: item.size,
+        url: `${API_ADDRESS}/bots/${findBot._id.toString()}/files/${item._id.toString()}/download`,
+      })),
       timestamp: Math.floor(new Date(findBot.timestamp).getTime() / 1000),
     },
     languages: listLanguages,
@@ -474,4 +508,174 @@ async function chat(req: Request, res: Response) {
   stream.pipeTo(writableStream);
 }
 
-export default { find, list, create, update, remove, chat };
+async function downloadFile(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: string = req.params.id;
+  const file: string = req.params.file;
+
+  if (id === undefined || !Types.ObjectId.isValid(id)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid bot id.");
+  }
+
+  if (file === undefined || !Types.ObjectId.isValid(file)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid file id.");
+  }
+
+  const findBot = await Bot.findOne({ _id: id, user: user._id });
+
+  if (findBot === null) {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "You dont have access to this bot.",
+    );
+  }
+
+  const findFile = findBot.files.find((item) => item._id.toString() === file);
+
+  if (findFile === undefined) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "The file doesn't exist.");
+  }
+
+  const fileName = `${findFile.name}.${findFile.type}`;
+  const mimeType = mime.getType(findFile.type);
+
+  if (mimeType === null) {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "The file cant't be downloaded.",
+    );
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET_NAME,
+    Key: `bots/${findFile.key}.${findFile.type}`,
+  });
+
+  try {
+    const response = await client.send(command);
+    const stream = response.Body as Readable;
+
+    res.setHeader("Content-disposition", "attachment; filename=" + fileName);
+    res.setHeader("Content-type", mimeType);
+    stream.pipe(res);
+  } catch (err: unknown) {
+    throw err instanceof Error
+      ? new ErrorResponse(ErrorCode.SERVER_ERROR, "Couldn't download the file.")
+      : new Error("Something went wrong");
+  }
+}
+
+async function uploadFile(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: string = req.params.id;
+  const files = req.files;
+
+  if (id === undefined || !Types.ObjectId.isValid(id)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid bot id.");
+  }
+
+  if (!files || !files.file || files.file instanceof Array) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "No files attached.");
+  }
+
+  const key: string = crypto.randomUUID();
+  const name = files.file.name.split(".").shift();
+  const type = files.file.name.split(".").pop();
+  const size = files.file.size;
+
+  if (name === undefined) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid file name.");
+  }
+
+  if (type === undefined || !allowedFileTypes.includes(type)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid file type.");
+  }
+
+  const findBot = await Bot.findOne({ _id: id, user: user._id });
+
+  if (findBot === null) {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "You dont have access to this bot.",
+    );
+  }
+
+  const command = new PutObjectCommand({
+    Bucket: S3_BUCKET_NAME,
+    Key: `bots/${key}.${type}`,
+    Body: files.file.data,
+  });
+
+  try {
+    await client.send(command);
+
+    await Bot.updateOne(
+      { _id: id },
+      { $push: { files: { key, name, type, size } } },
+    );
+
+    return sendValidResponse(res, SuccessCode.NO_CONTENT);
+  } catch (err: unknown) {
+    throw err instanceof Error
+      ? new ErrorResponse(ErrorCode.SERVER_ERROR, "Couldn't upload file.")
+      : new Error("Something went wrong");
+  }
+}
+
+async function removeFile(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: string = req.params.id;
+  const file: ParamValue = req.body.file;
+
+  if (id === undefined || !Types.ObjectId.isValid(id)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid bot id.");
+  }
+
+  if (file === undefined || !Types.ObjectId.isValid(file)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid file id.");
+  }
+
+  const findBot = await Bot.findOne({ _id: id, user: user._id });
+
+  if (findBot === null) {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "You dont have access to this bot.",
+    );
+  }
+
+  const findFile = findBot.files.find((item) => item._id.toString() === file);
+
+  if (findFile === undefined) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "The file doesn't exist.");
+  }
+
+  const command = new DeleteObjectCommand({
+    Bucket: S3_BUCKET_NAME,
+    Key: `bots/${findFile.key}.${findFile.type}`,
+  });
+
+  try {
+    await client.send(command);
+
+    await Bot.updateOne({ _id: id }, { $pull: { files: { _id: file } } });
+
+    return sendValidResponse(res, SuccessCode.NO_CONTENT);
+  } catch (err: unknown) {
+    throw err instanceof Error
+      ? new ErrorResponse(ErrorCode.SERVER_ERROR, "Couldn't remove the file.")
+      : new Error("Something went wrong");
+  }
+}
+
+export default {
+  find,
+  list,
+  create,
+  update,
+  remove,
+  chat,
+  downloadFile,
+  uploadFile,
+  removeFile,
+};

@@ -19,6 +19,24 @@ router.post(
   subscriptionAuthorization,
   asyncHandler(botController.create),
 );
+router.get(
+  "/:id/files/:file/download",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.downloadFile),
+);
+router.post(
+  "/:id/files/upload",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.uploadFile),
+);
+router.post(
+  "/:id/files/remove",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.removeFile),
+);
 router.post(
   "/:id/update",
   authorization,

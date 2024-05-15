@@ -12,12 +12,21 @@ type IBot = {
   maxTokens: number | null;
   temperature: number | null;
   topP: number | null;
+  files: Array<FileItem>;
   timestamp: Date;
 };
 
 export type PromptItem = {
   option: Types.ObjectId;
   value: string;
+};
+
+export type FileItem = {
+  _id: Types.ObjectId;
+  key: string;
+  name: string;
+  type: string;
+  size: number;
 };
 
 const schema = new Schema<IBot>({
@@ -77,6 +86,26 @@ const schema = new Schema<IBot>({
     required: false,
     default: () => 0.9,
   },
+  files: [
+    {
+      key: {
+        type: String,
+        required: true,
+      },
+      name: {
+        type: String,
+        required: true,
+      },
+      type: {
+        type: String,
+        required: true,
+      },
+      size: {
+        type: Number,
+        required: true,
+      },
+    },
+  ],
   timestamp: {
     type: Date,
     required: false,

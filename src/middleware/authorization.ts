@@ -6,10 +6,14 @@ import { TokenPayload } from "../types/TokenPayload.js";
 
 async function authorization(req: Request, res: Response, next: NextFunction) {
   const authorizationHeader = req.headers.authorization;
-  const token =
-    authorizationHeader && authorizationHeader.replace(/^Bearer\s/, "");
+  const queryToken = req.query.t;
+  const token = authorizationHeader
+    ? authorizationHeader.replace(/^Bearer\s/, "")
+    : queryToken
+      ? queryToken.toString()
+      : null;
 
-  if (token === undefined) {
+  if (token === null) {
     return res
       .status(ErrorCode.UNAUTHORIZED)
       .send({ message: "No token in authorization header." });

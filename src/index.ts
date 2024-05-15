@@ -1,6 +1,7 @@
 import bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
+import fileupload from "express-fileupload";
 import mongodb from "mongoose";
 import {
   DATABASE_HOST,
@@ -37,6 +38,7 @@ server.post(
 );
 
 server.use(cors());
+server.use(fileupload());
 server.use(bodyParser.json());
 
 server.use("/images", imageRoutes);
