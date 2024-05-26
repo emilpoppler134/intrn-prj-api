@@ -21,6 +21,7 @@ import {
   S3_SECRET_ACCESS_KEY,
 } from "../config.js";
 import { Bot, FileItem, IBot, PromptItem } from "../models/Bot.js";
+import { Chat, IChat } from "../models/Chat.js";
 import { Configuration, IConfiguration } from "../models/Configuration.js";
 import { ILanguage, Language } from "../models/Language.js";
 import { IModel, Model } from "../models/Model.js";
@@ -29,6 +30,7 @@ import { NumberParam, ParamValue } from "../types/ParamValue.js";
 import { ErrorCode, SuccessCode } from "../types/StatusCode.js";
 import { TokenPayload } from "../types/TokenPayload.js";
 import { ErrorResponse, sendValidResponse } from "../utils/sendResponse.js";
+
 const replicate = new Replicate({
   auth: REPLICATE_API_TOKEN,
 });
@@ -41,16 +43,25 @@ const client = new S3Client({
   },
 });
 
-const allowedFileTypes = ["json", "txt"];
+const allowedFileTypes = ["jsonl"];
 
 type BotExtended = Omit<
   IBot,
-  "language" | "model" | "configuration" | "prompts"
+  "language" | "model" | "configuration" | "prompts" | "chats"
 > & {
   language: ILanguage;
   model: IModel;
   configuration: IConfiguration;
   prompts: Array<Omit<PromptItem, "option"> & { option: IPrompt }>;
+  chats: Array<IChat>;
+};
+
+type ChatExtended = Omit<IChat, "bot"> & {
+  bot: Omit<IBot, "language" | "model" | "prompts"> & {
+    language: BotExtended["language"];
+    model: BotExtended["model"];
+    prompts: BotExtended["prompts"];
+  };
 };
 
 type BotResponse = {
@@ -65,6 +76,7 @@ type BotResponse = {
   temperature: number;
   topP: number;
   files: Array<FileItem & { url: string }>;
+  chats: Array<IChat>;
   timestamp: number;
 };
 
@@ -85,6 +97,10 @@ type ListBotResponse = Array<{
 type CreateBotResponse = {
   id: string;
 };
+
+type ListChatResponse = Array<
+  Omit<ChatExtended, "_id" | "user"> & { id: string }
+>;
 
 const isValidConfiguration = (bot: BotExtended): boolean =>
   (bot.configuration.name === "custom" &&
@@ -114,7 +130,8 @@ async function find(req: Request, res: Response) {
     .populate({ path: "language", model: "Language" })
     .populate({ path: "model", model: "Model" })
     .populate({ path: "prompts.option", model: "Prompt" })
-    .populate({ path: "configuration", model: "Configuration" });
+    .populate({ path: "configuration", model: "Configuration" })
+    .populate({ path: "chats", model: "Chat" });
 
   // If no result, return error
   if (findBot === null) {
@@ -201,6 +218,7 @@ async function find(req: Request, res: Response) {
         size: item.size,
         url: `${API_ADDRESS}/bots/${findBot._id.toString()}/files/${item._id.toString()}/download`,
       })),
+      chats: findBot.chats,
       timestamp: Math.floor(new Date(findBot.timestamp).getTime() / 1000),
     },
     languages: listLanguages,
@@ -324,6 +342,37 @@ async function create(req: Request, res: Response) {
     );
   }
 
+  // Create a new bot in the database
+  const createChat = await Chat.create({
+    user: user._id,
+    bot: createBot._id,
+    messages: [
+      {
+        sender: "bot",
+        message: `Hello ${user.name}! I'm ${name}.`,
+      },
+    ],
+  });
+  // If something went wrong, return an error
+  if (createChat === null) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when creating a chat.",
+    );
+  }
+
+  const updateBot = await Bot.updateOne(
+    { _id: createBot._id },
+    { $push: { chats: createChat._id } },
+  );
+
+  if (updateBot.acknowledged === false) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when updating the bot.",
+    );
+  }
+
   const botResponse: CreateBotResponse = {
     id: createBot._id.toString(),
   };
@@ -434,78 +483,6 @@ async function remove(req: Request, res: Response) {
 
   // If all good, return OK
   return sendValidResponse(res, SuccessCode.NO_CONTENT);
-}
-
-async function chat(req: Request, res: Response) {
-  const user: TokenPayload = res.locals.user;
-  const id: string = req.params.id;
-  const prompt: ParamValue = req.body.prompt;
-
-  // Check if all required values is defined
-  if (prompt === undefined || !Types.ObjectId.isValid(id)) {
-    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
-  }
-
-  // Look for the bot in the database by Id and userId
-  const findBot: BotExtended | null = await Bot.findOne({
-    user: user._id,
-    _id: id,
-  })
-    .populate({ path: "model", model: "Model" })
-    .populate({ path: "configuration", model: "Configuration" });
-
-  // If no result, return error
-  if (findBot === null) {
-    throw new ErrorResponse(
-      ErrorCode.NO_RESULT,
-      "There is no bot with that Id.",
-    );
-  }
-
-  if (!isValidConfiguration(findBot)) {
-    throw new ErrorResponse(
-      ErrorCode.CONFLICT,
-      "Something is wrong with your bot, try removing it and create a new one.",
-    );
-  }
-
-  const botConfiguration =
-    findBot.configuration.name === "custom"
-      ? {
-          maxTokens: findBot.maxTokens!,
-          temperature: findBot.temperature!,
-          topP: findBot.topP!,
-        }
-      : {
-          maxTokens: findBot.configuration.data!.maxTokens,
-          temperature: findBot.configuration.data!.temperature,
-          topP: findBot.configuration.data!.topP,
-        };
-
-  const llamaResponse = await replicate.predictions.create({
-    model: findBot.model.name,
-    stream: true,
-    input: {
-      prompt: `${prompt}`,
-      max_new_tokens: findBot.maxTokens,
-      ...(findBot.model.name.includes("llama3")
-        ? { max_tokens: botConfiguration.maxTokens }
-        : { max_new_tokens: botConfiguration.maxTokens }),
-      temperature: botConfiguration.temperature,
-      repetition_penalty: 1,
-      top_p: botConfiguration.topP,
-    },
-  });
-
-  const stream = await ReplicateStream(llamaResponse);
-
-  const writableStream = new WritableStream({
-    write(chunk) {
-      res.write(chunk);
-    },
-  });
-
-  stream.pipeTo(writableStream);
 }
 
 async function downloadFile(req: Request, res: Response) {
@@ -668,14 +645,259 @@ async function removeFile(req: Request, res: Response) {
   }
 }
 
+async function listChats(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: string = req.params.id;
+
+  if (!Types.ObjectId.isValid(id)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
+  }
+
+  const listChats: Array<ChatExtended> = await Chat.find({
+    bot: id,
+    user: user._id,
+  }).populate({
+    path: "bot",
+    model: "Bot",
+    populate: [
+      { path: "language", model: "Language" },
+      { path: "model", model: "Model" },
+      { path: "prompts.option", model: "Prompt" },
+    ],
+  });
+
+  const chatResponse: ListChatResponse = listChats
+    .map((item) => ({
+      id: item._id.toString(),
+      name: item.name,
+      bot: item.bot,
+      messages: item.messages,
+      timestamp: item.timestamp,
+    }))
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  return sendValidResponse(res, SuccessCode.OK, chatResponse);
+}
+
+async function createChat(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: string = req.params.id;
+
+  if (!Types.ObjectId.isValid(id)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
+  }
+
+  const findBot = await Bot.findOne({
+    user: user._id,
+    _id: id,
+  });
+
+  // If no result, return error
+  if (findBot === null) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "There is no bot with that Id.",
+    );
+  }
+
+  // Create a new bot in the database
+  const createChat = await Chat.create({
+    user: user._id,
+    bot: id,
+    messages: [
+      {
+        sender: "bot",
+        message: `Hello ${user.name}! I'm ${findBot.name}.`,
+      },
+    ],
+  });
+
+  return sendValidResponse(res, SuccessCode.OK, {
+    id: createChat._id.toString(),
+  });
+}
+
+async function removeChat(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: string = req.params.id;
+  const chatId: string = req.body.id;
+
+  if (!Types.ObjectId.isValid(id) || !Types.ObjectId.isValid(chatId)) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
+  }
+
+  const findBot = await Bot.findOne({
+    user: user._id,
+    _id: id,
+  });
+
+  // If no result, return error
+  if (findBot === null) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "There is no bot with that Id.",
+    );
+  }
+
+  const listChats = await Chat.find({
+    user: user._id,
+    bot: id,
+  });
+
+  if (listChats.length <= 1) {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "You can't remove the last chat.",
+    );
+  }
+
+  // If no result, return error
+  if (findBot === null) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "There is no bot with that Id.",
+    );
+  }
+
+  // remove the chat from the database
+  const removeChat = await Chat.deleteOne({
+    _id: chatId,
+    bot: id,
+    user: user._id,
+  });
+
+  if (removeChat.acknowledged === false) {
+    throw new ErrorResponse(
+      ErrorCode.SERVER_ERROR,
+      "Something went wrong when removing the chat.",
+    );
+  }
+
+  return sendValidResponse(res, SuccessCode.NO_CONTENT);
+}
+
+async function chat(req: Request, res: Response) {
+  const user: TokenPayload = res.locals.user;
+  const id: string = req.params.id;
+  const chatId: string = req.params.chatId;
+  const prompt: ParamValue = req.body.prompt;
+  const userMessage: ParamValue = req.body.userMessage;
+
+  // Check if all required values is defined
+  if (
+    prompt === undefined ||
+    userMessage === undefined ||
+    !Types.ObjectId.isValid(id)
+  ) {
+    throw new ErrorResponse(ErrorCode.BAD_REQUEST, "Invalid parameters.");
+  }
+
+  // Look for the bot in the database by Id and userId
+  const findBot: BotExtended | null = await Bot.findOne({
+    user: user._id,
+    _id: id,
+  })
+    .populate({ path: "model", model: "Model" })
+    .populate({ path: "configuration", model: "Configuration" });
+
+  // If no result, return error
+  if (findBot === null) {
+    throw new ErrorResponse(
+      ErrorCode.NO_RESULT,
+      "There is no bot with that Id.",
+    );
+  }
+
+  if (!isValidConfiguration(findBot)) {
+    throw new ErrorResponse(
+      ErrorCode.CONFLICT,
+      "Something is wrong with your bot, try removing it and create a new one.",
+    );
+  }
+
+  await Chat.updateOne(
+    { _id: chatId },
+    {
+      $push: {
+        messages: {
+          sender: "user",
+          message: userMessage,
+        },
+      },
+    },
+  );
+
+  const botConfiguration =
+    findBot.configuration.name === "custom"
+      ? {
+          maxTokens: findBot.maxTokens!,
+          temperature: findBot.temperature!,
+          topP: findBot.topP!,
+        }
+      : {
+          maxTokens: findBot.configuration.data!.maxTokens,
+          temperature: findBot.configuration.data!.temperature,
+          topP: findBot.configuration.data!.topP,
+        };
+
+  const llamaResponse = await replicate.predictions.create({
+    model: findBot.model.name,
+    stream: true,
+    input: {
+      prompt: `${prompt}`,
+      max_new_tokens: findBot.maxTokens,
+      ...(findBot.model.name.includes("llama3")
+        ? { max_tokens: botConfiguration.maxTokens }
+        : { max_new_tokens: botConfiguration.maxTokens }),
+      temperature: botConfiguration.temperature,
+      repetition_penalty: 1,
+      top_p: botConfiguration.topP,
+    },
+  });
+
+  let result: string = "";
+
+  const writableStream = new WritableStream({
+    write(chunk) {
+      res.write(chunk);
+
+      const decoded = new TextDecoder().decode(new Uint8Array(chunk));
+      const value = decoded.replace(/0:"/g, "").replace(/"\n/g, "");
+      result += value;
+    },
+    close() {
+      Chat.updateOne(
+        { _id: chatId },
+        {
+          $push: {
+            messages: {
+              sender: "bot",
+              message: result,
+            },
+          },
+        },
+      )
+        .then(() => {})
+        .catch((e) => console.log(e));
+    },
+  });
+
+  const stream = await ReplicateStream(llamaResponse);
+
+  stream.pipeTo(writableStream);
+}
+
 export default {
   find,
   list,
   create,
   update,
   remove,
-  chat,
   downloadFile,
   uploadFile,
   removeFile,
+  listChats,
+  createChat,
+  removeChat,
+  chat,
 };

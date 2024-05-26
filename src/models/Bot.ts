@@ -13,6 +13,7 @@ type IBot = {
   temperature: number | null;
   topP: number | null;
   files: Array<FileItem>;
+  chats: Array<Types.ObjectId>;
   timestamp: Date;
 };
 
@@ -104,6 +105,13 @@ const schema = new Schema<IBot>({
         type: Number,
         required: true,
       },
+    },
+  ],
+  chats: [
+    {
+      type: Schema.Types.ObjectId,
+      required: true,
+      ref: "Chat",
     },
   ],
   timestamp: {

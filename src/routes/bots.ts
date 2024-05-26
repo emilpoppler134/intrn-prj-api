@@ -50,7 +50,25 @@ router.post(
   asyncHandler(botController.remove),
 );
 router.post(
-  "/:id/chat",
+  "/:id/chats",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.listChats),
+);
+router.post(
+  "/:id/chats/create",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.createChat),
+);
+router.post(
+  "/:id/chats/remove",
+  authorization,
+  subscriptionAuthorization,
+  asyncHandler(botController.removeChat),
+);
+router.post(
+  "/:id/:chatId/chat",
   authorization,
   subscriptionAuthorization,
   asyncHandler(botController.chat),
