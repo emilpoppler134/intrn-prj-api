@@ -37,7 +37,7 @@ server.post(
   handleWebhook,
 );
 
-server.use(cors());
+server.use(cors({ origin: "*" }));
 server.use(fileupload());
 server.use(bodyParser.json());
 
