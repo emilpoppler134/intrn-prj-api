@@ -514,7 +514,7 @@ async function downloadFile(req: Request, res: Response) {
   }
 
   const fileName = `${findFile.name}.${findFile.type}`;
-  const mimeType = mime.getType(findFile.type);
+  const mimeType = "application/json";
 
   if (mimeType === null) {
     throw new ErrorResponse(
