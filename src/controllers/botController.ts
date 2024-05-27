@@ -7,7 +7,6 @@ import {
 import { ReplicateStream } from "ai";
 import crypto from "crypto";
 import { Request, Response } from "express";
-import mime from "mime";
 import { DeleteResult, UpdateResult } from "mongodb";
 import { Types } from "mongoose";
 import Replicate from "replicate";
@@ -859,6 +858,7 @@ async function chat(req: Request, res: Response) {
 
   const writableStream = new WritableStream({
     write(chunk) {
+      console.log(chunk);
       res.write(chunk);
 
       const decoded = new TextDecoder().decode(new Uint8Array(chunk));
